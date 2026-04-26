@@ -12,6 +12,6 @@ export const manifest: PluginManifest = {
     en: 'Mirror a leader arm to a follower arm in real time. Add a camera feed for a first-person view.',
     ru: 'Синхронизируйте ведущую руку с ведомой в реальном времени. Добавьте камеру для вида от первого лица.',
   },
-  icon: 'Radio',
+  icon: 'satellite-dish',
   scopes: ['robot.read', 'robot.control', 'robot.leader', 'camera.read'],
 }

@@ -12,6 +12,6 @@ export const manifest: PluginManifest = {
     en: 'Assign sequential IDs to each motor one at a time.',
     ru: 'Последовательно назначьте ID каждому мотору.',
   },
-  icon: 'refresh-cw',
+  icon: 'hash',
   scopes: ['robot.config'],
 }
