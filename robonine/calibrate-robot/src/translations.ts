@@ -23,7 +23,8 @@ export const translations: Record<string, T> = {
     step2: 'Have enough space around the arm for it to move freely.',
     step3: 'Click "Connect robot".',
     connectRobot: 'Connect robot',
-    calibratingDescription: 'Move every joint of your robotic arm. For each motor, push it to its maximum position, then pull it back to its minimum. The sliders below will reflect the arm\'s motor angles.',
+    calibratingDescription:
+      "Move every joint of your robotic arm. For each motor, push it to its maximum position, then pull it back to its minimum. The sliders below will reflect the arm's motor angles.",
     jointsMoved: (moved, total) => `Joints moved: ${moved}/${total}`,
     imDone: "I'm done",
     saving: 'Saving…',
