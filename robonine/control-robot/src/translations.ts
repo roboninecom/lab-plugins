@@ -1,0 +1,24 @@
+export const translations = {
+  en: {
+    title: 'Control Robot',
+    description: 'Manually move each joint of your robot arm using on-screen sliders.',
+    beforeYouStart: 'Before you start',
+    step1: 'Make sure the area around the robot is clear.',
+    step2: 'Connect the robot via USB or use a virtual connection.',
+    step3: 'Click "Connect robot".',
+    connectRobot: 'Connect robot',
+    liveDescription: 'Use the sliders to move each joint. Press "Go home" to return the arm to its neutral position.',
+    goHome: 'Go home',
+  },
+  ru: {
+    title: 'Управление роботом',
+    description: 'Управляйте каждым суставом руки-робота с помощью ползунков на экране.',
+    beforeYouStart: 'Перед началом',
+    step1: 'Убедитесь, что вокруг робота нет препятствий.',
+    step2: 'Подключите робота через USB или используйте виртуальное подключение.',
+    step3: 'Нажмите «Подключить робота».',
+    connectRobot: 'Подключить робота',
+    liveDescription: 'Используйте ползунки для перемещения каждого сустава. Нажмите «Домой», чтобы вернуть руку в нейтральное положение.',
+    goHome: 'Домой',
+  },
+} satisfies Record<string, Record<string, string>>

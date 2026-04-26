@@ -1,0 +1,28 @@
+export const translations = {
+  en: {
+    title: 'Calibrate motors',
+    description: 'Place all joints in the home position and save the offsets to each motor.',
+    beforeYouStart: 'Before you start',
+    step1: 'Gently move the arm so all joints point straight ahead.',
+    step2: 'Make sure all 6 motors are connected to the control board.',
+    step3: 'Click "Connect robot".',
+    connectRobot: 'Connect robot',
+    liveDescription: "Place the robot in exactly this position, as precisely as you can. We'll save the motor readings as the home point.",
+    save: 'Save',
+    done: 'Done',
+    success: 'Motor offsets saved successfully.',
+  },
+  ru: {
+    title: 'Калибровка моторов',
+    description: 'Установите все суставы в начальное положение и сохраните смещения в каждый мотор.',
+    beforeYouStart: 'Перед началом',
+    step1: 'Аккуратно переведите руку в положение, при котором все суставы направлены прямо вперёд.',
+    step2: 'Убедитесь, что все 6 моторов подключены к плате управления.',
+    step3: 'Нажмите «Подключить робота».',
+    connectRobot: 'Подключить робота',
+    liveDescription: 'Установите робота точно в это положение. Мы сохраним показания моторов как начальную точку.',
+    save: 'Сохранить',
+    done: 'Готово',
+    success: 'Смещения моторов успешно сохранены.',
+  },
+} satisfies Record<string, Record<string, string>>
