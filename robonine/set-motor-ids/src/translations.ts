@@ -23,15 +23,15 @@ type T = {
 
 export const translations: Record<string, T> = {
   en: {
-    title: 'Set Motor IDs',
+    title: 'Set motor IDs',
     description: 'Assign sequential IDs to each motor in your robot arm.',
     connectHardware: 'Connect hardware',
     motorLabels: {
-      1: 'Shoulder Pan',
-      2: 'Shoulder Lift',
-      3: 'Elbow Flex',
-      4: 'Wrist Flex',
-      5: 'Wrist Roll',
+      1: 'Shoulder pan',
+      2: 'Shoulder lift',
+      3: 'Elbow flex',
+      4: 'Wrist flex',
+      5: 'Wrist roll',
       6: 'Gripper',
     },
     progressOf: (step, total) => `${step} of ${total}`,

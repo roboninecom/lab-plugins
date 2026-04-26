@@ -1,6 +1,6 @@
 export const translations = {
   en: {
-    title: 'Control Robot',
+    title: 'Control robot',
     description: 'Manually move each joint of your robot arm using on-screen sliders.',
     beforeYouStart: 'Before you start',
     step1: 'Make sure the area around the robot is clear.',

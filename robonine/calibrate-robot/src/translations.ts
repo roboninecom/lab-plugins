@@ -16,7 +16,7 @@ type T = {
 
 export const translations: Record<string, T> = {
   en: {
-    title: 'Calibrate Robot',
+    title: 'Calibrate robot',
     description: 'Record the full range of motion for each joint.',
     beforeYouStart: 'Before you start',
     step1: 'Make sure all motors are connected to the control board.',
