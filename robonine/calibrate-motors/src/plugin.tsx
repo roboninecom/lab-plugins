@@ -1,4 +1,4 @@
-import type { JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
+import type { CalibrationData, JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
 import { CheckCircle2, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
@@ -158,6 +158,19 @@ export function PluginRoot({ context }: Props) {
 
       await context.servo.disableTorque()
       await context.servo.calibrateNeutralPositions(connectedMotors)
+
+      const calibrationData: CalibrationData = {
+        version: 1,
+        motors: Object.fromEntries(
+          connectedMotors.map(({ id, neutral }) => [id, { rawMin: neutral, rawMax: neutral, urdfMin: 0, urdfMax: 0 }]),
+        ),
+      }
+
+      try {
+        await context.saveCalibration(calibrationData)
+      } catch {
+        // non-fatal — EEPROM write succeeded even if API is unavailable
+      }
     }
 
     setPhase('done')
