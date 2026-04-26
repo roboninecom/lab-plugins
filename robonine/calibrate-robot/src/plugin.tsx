@@ -24,6 +24,7 @@ export function PluginRoot({ context }: Props) {
   const [liveRawRanges, setLiveRawRanges] = useState<Record<string, { min: number; max: number }>>({})
   const [lastMovedMotorId, setLastMovedMotorId] = useState<number | null>(null)
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState(false)
   const viewRef = useRef<WorldViewApi>(null)
   const jointsRef = useRef<JointInfo[]>([])
   const stopPollingRef = useRef<(() => void) | null>(null)
@@ -186,6 +187,7 @@ export function PluginRoot({ context }: Props) {
     const currentJoints = jointsRef.current
     const cfg = robotConfigRef.current
     const newCalibration: Record<number, JointCalibration> = {}
+    let failed = false
 
     stopPollingRef.current?.()
     stopPollingRef.current = null
@@ -213,24 +215,13 @@ export function PluginRoot({ context }: Props) {
     try {
       await context.saveRangeCalibration(newCalibration)
     } catch {
-      // proceed to done regardless
+      failed = true
     }
 
     setSaving(false)
+    setSaveError(failed)
     setPhase('done')
   }, [context])
-
-  const handleReset = useCallback(() => {
-    motorRangesRef.current = {}
-    prevRawRef.current = {}
-    setMovedJoints(new Set())
-    setLiveRawRanges({})
-    setLastMovedMotorId(null)
-    setJoints([])
-    setValues({})
-    jointsRef.current = []
-    setPhase(context.connection.connected ? 'calibrating' : 'disconnected')
-  }, [context.connection.connected])
 
   if (phase === 'disconnected') {
     return (
@@ -264,11 +255,18 @@ export function PluginRoot({ context }: Props) {
             <h1 className="text-xl font-semibold">{t.title}</h1>
             <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
           </div>
-          <div className="flex items-center gap-3 rounded-lg border border-green-500/40 bg-green-500/5 px-4 py-3 text-sm text-green-600">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
-            {t.success}
-          </div>
-          <Button className="w-full" onClick={handleReset}>
+          {saveError ? (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm text-amber-600">
+              <span className="shrink-0 mt-0.5">⚠</span>
+              {t.saveError}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 rounded-lg border border-green-500/40 bg-green-500/5 px-4 py-3 text-sm text-green-600">
+              <CheckCircle2 className="w-4 h-4 shrink-0" />
+              {t.success}
+            </div>
+          )}
+          <Button className="w-full" onClick={() => context.navigate('/tools')}>
             {t.calibrateAgain}
           </Button>
         </div>

@@ -70,10 +70,6 @@ export function PluginRoot({ context }: Props) {
           }
 
           setValues((prev) => ({ ...prev, ...newVals }))
-
-          for (const [name, value] of Object.entries(newVals)) {
-            viewRef.current?.setJoint(name, value)
-          }
         }
 
         busy = false
@@ -217,7 +213,7 @@ export function PluginRoot({ context }: Props) {
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             {t.success}
           </div>
-          <context.ui.Button className="w-full" onClick={() => setPhase('connected')}>
+          <context.ui.Button className="w-full" onClick={() => context.navigate('/tools')}>
             {t.done}
           </context.ui.Button>
         </div>

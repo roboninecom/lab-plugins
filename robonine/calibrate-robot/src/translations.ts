@@ -11,6 +11,7 @@ type T = {
   imDone: string
   saving: string
   success: string
+  saveError: string
   calibrateAgain: string
 }
 
@@ -29,6 +30,7 @@ export const translations: Record<string, T> = {
     imDone: "I'm done",
     saving: 'Saving…',
     success: 'Calibration saved successfully.',
+    saveError: 'Calibration complete, but the data could not be saved. Make sure you are signed in and have a robot profile selected.',
     calibrateAgain: 'Done',
   },
   ru: {
@@ -44,6 +46,7 @@ export const translations: Record<string, T> = {
     imDone: 'Готово',
     saving: 'Сохранение…',
     success: 'Калибровка успешно сохранена.',
+    saveError: 'Калибровка выполнена, но данные не удалось сохранить. Убедитесь, что вы вошли в систему и выбрали профиль робота.',
     calibrateAgain: 'Готово',
   },
 }
