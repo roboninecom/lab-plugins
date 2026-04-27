@@ -13,5 +13,5 @@ export const manifest: PluginManifest = {
     ru: 'Установите все суставы в начальное положение и сохраните смещения в каждый мотор.',
   },
   icon: 'Settings2',
-  scopes: ['robot.control', 'robot.calibration'],
+  scopes: ['robot.control', 'robot.calibration', 'robot.local'],
 }

@@ -1,5 +1,5 @@
+import type { CameraHandle, JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
 import { AlertTriangle, Camera, CameraOff, CheckCircle2, Radio, XCircle } from 'lucide-react'
-import type { JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
 
@@ -13,13 +13,12 @@ export function PluginRoot({ context }: Props) {
   const follower = context.robot('default')
   const leader = context.robot('leader')
   const [isRunning, setIsRunning] = useState(false)
-  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null)
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [cameraVisible, setCameraVisible] = useState(true)
   const viewRef = useRef<WorldViewApi>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const stopLoopRef = useRef<(() => void) | null>(null)
   const cleanupEmergencyStopRef = useRef<(() => void) | null>(null)
-  const cameraStreamRef = useRef<MediaStream | null>(null)
   const sortedJointNamesRef = useRef<string[]>([])
 
   // Keep servo/connection refs current for stable loop closures.
@@ -31,17 +30,24 @@ export function PluginRoot({ context }: Props) {
   followerServoRef.current = follower.servo
   followerConnectionRef.current = follower.connection
 
-  // Keep camera stream accessible for stable cleanup.
-  useEffect(() => {
-    cameraStreamRef.current = cameraStream
-  }, [cameraStream])
+  const selectedCamera = useMemo<CameraHandle | null>(() => context.cameras.find((c) => c.id === selectedCameraId) ?? null, [context.cameras, selectedCameraId])
 
-  // Re-bind stream to video element whenever it mounts or the stream changes.
+  // Keep selection in sync: auto-select when there's exactly one camera and nothing is
+  // selected; clear selection when the selected camera disappears.
   useEffect(() => {
-    if (videoRef.current && cameraStream) {
-      videoRef.current.srcObject = cameraStream
+    if (!selectedCameraId && context.cameras.length === 1) {
+      setSelectedCameraId(context.cameras[0].id)
+    } else if (selectedCameraId && !context.cameras.find((c) => c.id === selectedCameraId)) {
+      setSelectedCameraId(null)
     }
-  }, [cameraStream, isRunning, cameraVisible])
+  }, [context.cameras, selectedCameraId])
+
+  // Bind camera stream to video element.
+  useEffect(() => {
+    if (videoRef.current && selectedCamera?.stream) {
+      videoRef.current.srcObject = selectedCamera.stream
+    }
+  }, [selectedCamera, isRunning, cameraVisible])
 
   // Stop the loop if either arm disconnects while running.
   useEffect(() => {
@@ -61,7 +67,6 @@ export function PluginRoot({ context }: Props) {
     () => () => {
       stopLoopRef.current?.()
       cleanupEmergencyStopRef.current?.()
-      cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
     },
     [],
   )
@@ -70,24 +75,6 @@ export function PluginRoot({ context }: Props) {
     if (sortedJointNamesRef.current.length === 0) {
       sortedJointNamesRef.current = joints.map((j) => j.name)
     }
-  }, [])
-
-  const handleConnectCamera = useCallback(async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
-
-      cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
-      cameraStreamRef.current = stream
-      setCameraStream(stream)
-    } catch {
-      // user denied or no camera available
-    }
-  }, [])
-
-  const handleDisconnectCamera = useCallback(() => {
-    cameraStreamRef.current?.getTracks().forEach((track) => track.stop())
-    cameraStreamRef.current = null
-    setCameraStream(null)
   }, [])
 
   const handleStart = useCallback(async () => {
@@ -162,7 +149,6 @@ export function PluginRoot({ context }: Props) {
             <h1 className="text-xl font-semibold">{t.title}</h1>
             <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
           </div>
-          <div className="rounded-lg border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{t.remoteNote}</div>
           <div className="rounded-lg border bg-card p-5 space-y-4">
             <div className="flex items-center gap-3">
               <div className="size-5 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">1</div>
@@ -231,13 +217,18 @@ export function PluginRoot({ context }: Props) {
             </div>
           </div>
 
-          {cameraStream && (
+          {selectedCamera && (
             <>
               {cameraVisible && (
                 <div className="rounded-lg overflow-hidden border bg-black">
                   <video ref={videoRef} autoPlay playsInline muted style={{ width: '240px', height: 'auto', display: 'block' }} />
                 </div>
               )}
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
+                <Camera className="w-3.5 h-3.5 shrink-0" />
+                <span className="flex-1 truncate">{selectedCamera.label}</span>
+                <span className="rounded px-1.5 py-0.5 bg-muted">{selectedCamera.source === 'local' ? t.local : t.remote}</span>
+              </div>
               <Button variant="outline" className="w-full" onClick={() => setCameraVisible((v) => !v)}>
                 {cameraVisible ? (
                   <>
@@ -301,26 +292,28 @@ export function PluginRoot({ context }: Props) {
           </div>
         )}
 
-        <div className="rounded-lg border bg-card p-5 space-y-3">
-          <p className="font-semibold text-sm">{t.cameraTitle}</p>
-          <p className="text-sm text-muted-foreground">{t.cameraDescription}</p>
-          {cameraStream ? (
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-green-600 flex items-center gap-2">
-                <Camera className="w-4 h-4" />
-                {t.cameraConnected}
-              </span>
-              <Button variant="ghost" size="sm" onClick={handleDisconnectCamera}>
-                {t.disconnectCamera}
-              </Button>
+        {context.cameras.length > 0 && (
+          <div className="rounded-lg border bg-card p-5 space-y-3">
+            <p className="font-semibold text-sm">{t.cameraTitle}</p>
+            <div className="space-y-1.5">
+              {context.cameras.map((cam) => (
+                <button
+                  key={cam.id}
+                  onClick={() => setSelectedCameraId(cam.id === selectedCameraId ? null : cam.id)}
+                  className={`w-full flex items-center gap-2 rounded-md border px-3 py-2 text-sm text-left transition-colors ${cam.id === selectedCameraId ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}
+                >
+                  <Camera className="w-4 h-4 shrink-0 text-muted-foreground" />
+                  <span className="flex-1 truncate">{cam.label}</span>
+                  <span
+                    className={`text-xs px-1.5 py-0.5 rounded ${cam.source === 'local' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}
+                  >
+                    {cam.source === 'local' ? t.local : t.remote}
+                  </span>
+                </button>
+              ))}
             </div>
-          ) : (
-            <Button variant="outline" className="w-full" onClick={() => void handleConnectCamera()}>
-              <Camera className="w-4 h-4 mr-2" />
-              {t.connectCamera}
-            </Button>
-          )}
-        </div>
+          </div>
+        )}
 
         <Button className="w-full" onClick={() => void handleStart()}>
           <Radio className="w-4 h-4 mr-2" />

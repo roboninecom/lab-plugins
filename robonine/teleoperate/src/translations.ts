@@ -2,7 +2,6 @@ export const translations = {
   en: {
     title: 'Teleoperate',
     description: 'Mirror a leader arm to a follower arm in real time.',
-    remoteNote: 'Remote mode via WebRTC is not yet supported — only local USB/Bluetooth connections are available.',
     // Connection steps
     connectFollower: 'Connect follower arm',
     connectLeader: 'Connect leader arm',
@@ -13,11 +12,10 @@ export const translations = {
     calibrationWarning: 'One or both arms have no configuration loaded. Run the calibration tools first for best results.',
     modelMismatch: 'The arms have different models. Joint positions may not map correctly.',
     cameraTitle: 'Camera (optional)',
-    cameraDescription: 'Stream from a camera on the follower side for a first-person view.',
-    connectCamera: 'Connect camera',
-    cameraConnected: 'Camera ready',
-    disconnectCamera: 'Disconnect',
     startTeleoperation: 'Start teleoperation',
+    // Camera
+    local: 'Local',
+    remote: 'Remote',
     // Running
     follower: 'Follower arm',
     leader: 'Leader arm',
@@ -28,7 +26,6 @@ export const translations = {
   ru: {
     title: 'Телеуправление',
     description: 'Синхронизируйте ведущую руку с ведомой в реальном времени.',
-    remoteNote: 'Удалённый режим через WebRTC пока не поддерживается — доступны только локальные подключения USB/Bluetooth.',
     connectFollower: 'Подключить ведомую руку',
     connectLeader: 'Подключить ведущую руку',
     followerConnected: 'Ведомая рука подключена',
@@ -37,11 +34,9 @@ export const translations = {
     calibrationWarning: 'У одной или обеих рук не загружена конфигурация. Для лучших результатов сначала выполните калибровку.',
     modelMismatch: 'Руки имеют разные модели. Позиции суставов могут не совпасть.',
     cameraTitle: 'Камера (необязательно)',
-    cameraDescription: 'Трансляция с камеры на стороне ведомой руки для вида от первого лица.',
-    connectCamera: 'Подключить камеру',
-    cameraConnected: 'Камера готова',
-    disconnectCamera: 'Отключить',
     startTeleoperation: 'Начать телеуправление',
+    local: 'Локальная',
+    remote: 'Удалённая',
     follower: 'Ведомая рука',
     leader: 'Ведущая рука',
     hideCamera: 'Скрыть камеру',
