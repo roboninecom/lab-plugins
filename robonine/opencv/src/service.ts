@@ -1,0 +1,70 @@
+import type { PluginServiceFactory } from '@robonine/plugin-sdk'
+
+export const OPENCV_VERSION = '4.13.0'
+
+const OPENCV_URL = `https://docs.opencv.org/${OPENCV_VERSION}/opencv.js`
+
+export interface OpenCVService {
+  /** Resolves when OpenCV is loaded and ready to use. */
+  ready: Promise<void>
+  /** OpenCV version string, e.g. "4.10.0" */
+  version: string
+  /** Returns the raw cv object. Call after ready resolves. */
+  getCv: () => unknown
+}
+
+let loadPromise: Promise<void> | null = null
+
+function loadOpenCV(): Promise<void> {
+  if (loadPromise) {
+    return loadPromise
+  }
+
+  loadPromise = new Promise<void>((resolve, reject) => {
+    const win = window as Record<string, unknown>
+    const cv = win['cv'] as Record<string, unknown> | undefined
+
+    // Already initialised
+    const script = document.createElement('script')
+
+    if (cv && typeof cv['Mat'] === 'function') {
+      resolve()
+
+      return
+    }
+
+    // Set onRuntimeInitialized before injecting the script so emscripten picks it up
+    const existingModule = (win['Module'] as Record<string, unknown>) ?? {}
+    const existingCallback = existingModule['onRuntimeInitialized'] as (() => void) | undefined
+
+    win['Module'] = {
+      ...existingModule,
+      onRuntimeInitialized() {
+        existingCallback?.()
+        resolve()
+      },
+    }
+
+    script.src = OPENCV_URL
+    script.async = true
+    script.onerror = () => {
+      loadPromise = null
+      reject(new Error(`Failed to load OpenCV.js ${OPENCV_VERSION}`))
+    }
+    document.head.appendChild(script)
+  })
+
+  return loadPromise
+}
+
+export const PluginService: PluginServiceFactory = () => {
+  const ready = loadOpenCV()
+
+  const service: OpenCVService = {
+    ready,
+    version: OPENCV_VERSION,
+    getCv: () => (window as Record<string, unknown>)['cv'],
+  }
+
+  return service
+}
