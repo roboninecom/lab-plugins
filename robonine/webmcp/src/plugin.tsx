@@ -8,19 +8,35 @@ interface Props {
   context: PluginContext
 }
 
-const ALL_TOOLS = ['robonine', 'robot_list', 'robot_get_position', 'robot_stop', 'user_robot_list', 'path_list', 'path_read']
+const ALL_TOOLS = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path'] as const
 const CONSENT_KEY = 'webmcp:relay:consented'
 
-function StatusRow({ ok, label, note, onAction, actionLabel }: { ok: boolean; label: string; note?: string; onAction?: () => void; actionLabel?: string }) {
+type T = (typeof translations)[keyof typeof translations]
+
+function toolDesc(name: (typeof ALL_TOOLS)[number], t: T): string {
+  const map: Record<(typeof ALL_TOOLS)[number], string> = {
+    robonine: t.toolDescRobonine,
+    list_robots: t.toolDescListRobots,
+    get_robot_position: t.toolDescGetRobotPosition,
+    stop_robot: t.toolDescStopRobot,
+    list_user_robots: t.toolDescListUserRobots,
+    list_paths: t.toolDescListPaths,
+    read_path: t.toolDescReadPath,
+  }
+
+  return map[name]
+}
+
+function StatusRow({ ok, label, note, actionHref, actionLabel }: { ok: boolean; label: string; note?: string; actionHref?: string; actionLabel?: string }) {
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-3">
         {ok ? <CheckCircle2 className="w-5 h-5 text-green-500 shrink-0" /> : <XCircle className="w-5 h-5 text-red-500 shrink-0" />}
         <span className="font-medium text-sm flex-1">{label}</span>
-        {!ok && onAction && actionLabel && (
-          <button onClick={onAction} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground shrink-0">
+        {!ok && actionHref && actionLabel && (
+          <a href={actionHref} target="_blank" rel="noopener noreferrer" className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground shrink-0">
             {actionLabel}
-          </button>
+          </a>
         )}
       </div>
       {!ok && note && <p className="text-xs text-muted-foreground pl-8">{note}</p>}
@@ -90,23 +106,7 @@ export function PluginRoot({ context }: Props) {
           </div>
 
           <div className="rounded-lg border bg-card p-5 space-y-4">
-            <StatusRow
-              ok={relayConnected}
-              label={relayConnected ? t.relayConnected : t.relayDisconnected}
-              note={t.relayNote}
-              onAction={service ? () => service.connect() : undefined}
-              actionLabel={t.relayReconnect}
-            />
-            {!relayConnected && (
-              <a
-                href="https://github.com/roboninecom/robonine-mcp"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground pl-8 block"
-              >
-                {t.relayHowTo}
-              </a>
-            )}
+            <StatusRow ok={relayConnected} label={relayConnected ? t.relayConnected : t.relayDisconnected} actionHref="https://github.com/roboninecom/robonine-mcp" actionLabel={t.relayHowTo} />
             <StatusRow ok={isActive} label={isActive ? t.statusActive : t.statusInactive} note={t.statusNote} />
           </div>
 
@@ -114,9 +114,9 @@ export function PluginRoot({ context }: Props) {
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.toolsSectionTitle}</p>
             <div className="space-y-2">
               {ALL_TOOLS.map((name) => (
-                <div key={name} className="flex items-center justify-between text-sm">
-                  <code className="font-mono">{name}</code>
-                  <span className="text-xs text-muted-foreground">{t.toolAlwaysOn}</span>
+                <div key={name} className="flex items-center justify-between gap-4 text-sm">
+                  <code className="font-mono shrink-0">{name}</code>
+                  <span className="text-xs text-muted-foreground text-right">{toolDesc(name, t)}</span>
                 </div>
               ))}
             </div>

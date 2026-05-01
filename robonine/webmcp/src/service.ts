@@ -45,32 +45,32 @@ export interface McpService {
   connect(): void
 }
 
-const ALL_TOOL_NAMES = ['robonine', 'robot_list', 'robot_get_position', 'robot_stop', 'user_robot_list', 'path_list', 'path_read']
+const ALL_TOOL_NAMES = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path']
 
 export const PluginService: PluginServiceFactory = (ctx) => {
   const registeredTools: string[] = []
   let relayConnected = false
 
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
-    path_list: async () => ctx.listUserPaths(),
-    path_read: async (args) => {
-      const path = await ctx.readPath(String(args['id']))
-
-      return path ?? 'Path not found.'
-    },
-    robot_get_position: async (args) => {
+    get_robot_position: async (args) => {
       const pos = await ctx.getRobotPosition(roleArg(args))
 
       return pos ?? `No robot connected for role "${roleArg(args)}".`
     },
-    robot_list: async () => ctx.listConnectedRobots(),
-    robot_stop: async (args) => {
+    list_paths: async () => ctx.listUserPaths(),
+    list_robots: async () => ctx.listConnectedRobots(),
+    list_user_robots: async () => ctx.listUserRobots(),
+    read_path: async (args) => {
+      const path = await ctx.readPath(String(args['id']))
+
+      return path ?? 'Path not found.'
+    },
+    robonine: async () => ({ server: 'Robonine WebMCP', tools: ALL_TOOL_NAMES.filter((n) => n !== 'robonine') }),
+    stop_robot: async (args) => {
       await ctx.stopRobot(roleArg(args))
 
       return 'OK'
     },
-    robonine: async () => ({ server: 'Robonine WebMCP', tools: ALL_TOOL_NAMES.filter((n) => n !== 'robonine') }),
-    user_robot_list: async () => ctx.listUserRobots(),
   }
 
   let attempt: () => void = () => {}
@@ -95,46 +95,46 @@ export const PluginService: PluginServiceFactory = (ctx) => {
     {
       annotations: { readOnlyHint: true },
       description: 'List all robots belonging to the current user — name, model, and calibration data.',
-      execute: async () => text(await handlers['user_robot_list']!({})),
-      name: 'user_robot_list',
+      execute: async () => text(await handlers['list_user_robots']!({})),
+      name: 'list_user_robots',
     },
     {
       annotations: { readOnlyHint: true },
       description: 'List all motion paths belonging to the current user — id, name, robot model, and creation date.',
-      execute: async () => text(await handlers['path_list']!({})),
-      name: 'path_list',
+      execute: async () => text(await handlers['list_paths']!({})),
+      name: 'list_paths',
     },
     {
       annotations: { readOnlyHint: true },
       description: 'Read a motion path by ID, returning its waypoints and metadata.',
-      execute: async (args) => text(await handlers['path_read']!(args)),
+      execute: async (args) => text(await handlers['read_path']!(args)),
       inputSchema: { properties: { id: { description: 'Path ID', type: 'string' } }, required: ['id'], type: 'object' },
-      name: 'path_read',
+      name: 'read_path',
     },
     {
       annotations: { readOnlyHint: true },
       description: 'List currently connected robot arms with their role, model, and connection mode (virtual / remote).',
-      execute: async () => text(await handlers['robot_list']!({})),
-      name: 'robot_list',
+      execute: async () => text(await handlers['list_robots']!({})),
+      name: 'list_robots',
     },
     {
       annotations: { readOnlyHint: true },
       description: 'Get the current joint angles (radians for revolute joints, metres for prismatic) and end-effector XYZ position (metres, URDF frame) of a connected robot arm.',
-      execute: async (args) => text(await handlers['robot_get_position']!(args)),
+      execute: async (args) => text(await handlers['get_robot_position']!(args)),
       inputSchema: {
         properties: { role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' } },
         type: 'object',
       },
-      name: 'robot_get_position',
+      name: 'get_robot_position',
     },
     {
       description: 'Disable torque on all servos of a connected robot arm. The arm will go limp.',
-      execute: async (args) => text(await handlers['robot_stop']!(args)),
+      execute: async (args) => text(await handlers['stop_robot']!(args)),
       inputSchema: {
         properties: { role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' } },
         type: 'object',
       },
-      name: 'robot_stop',
+      name: 'stop_robot',
     },
   ]
 
