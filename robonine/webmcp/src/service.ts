@@ -45,7 +45,7 @@ export interface McpService {
   connect(): void
 }
 
-const ALL_TOOL_NAMES = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path']
+const ALL_TOOL_NAMES = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path', 'move_to', 'go_home', 'execute_path']
 
 export const PluginService: PluginServiceFactory = (ctx) => {
   const registeredTools: string[] = []
@@ -68,6 +68,25 @@ export const PluginService: PluginServiceFactory = (ctx) => {
     robonine: async () => ({ server: 'Robonine WebMCP', tools: ALL_TOOL_NAMES.filter((n) => n !== 'robonine') }),
     stop_robot: async (args) => {
       await ctx.stopRobot(roleArg(args))
+
+      return 'OK'
+    },
+    move_to: async (args) => {
+      const x = Number(args['x'])
+      const y = Number(args['y'])
+      const z = Number(args['z'])
+
+      await ctx.moveToPosition(x, y, z, roleArg(args))
+
+      return 'OK'
+    },
+    go_home: async (args) => {
+      await ctx.goHome(roleArg(args))
+
+      return 'OK'
+    },
+    execute_path: async (args) => {
+      await ctx.executePath(String(args['id']), roleArg(args))
 
       return 'OK'
     },
@@ -135,6 +154,43 @@ export const PluginService: PluginServiceFactory = (ctx) => {
         type: 'object',
       },
       name: 'stop_robot',
+    },
+    {
+      description: 'Move the robot end-effector to the given XYZ position (metres, URDF frame) using inverse kinematics. Requires an IK model to be available for the connected robot.',
+      execute: async (args) => text(await handlers['move_to']!(args)),
+      inputSchema: {
+        properties: {
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+          x: { description: 'Target X coordinate in metres (URDF world frame).', type: 'number' },
+          y: { description: 'Target Y coordinate in metres (URDF world frame).', type: 'number' },
+          z: { description: 'Target Z coordinate in metres (URDF world frame).', type: 'number' },
+        },
+        required: ['x', 'y', 'z'],
+        type: 'object',
+      },
+      name: 'move_to',
+    },
+    {
+      description: 'Move the robot to its home (neutral) position.',
+      execute: async (args) => text(await handlers['go_home']!(args)),
+      inputSchema: {
+        properties: { role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' } },
+        type: 'object',
+      },
+      name: 'go_home',
+    },
+    {
+      description: 'Execute a saved motion path once by replaying its waypoints to the robot.',
+      execute: async (args) => text(await handlers['execute_path']!(args)),
+      inputSchema: {
+        properties: {
+          id: { description: 'Motion path ID (from list_paths).', type: 'string' },
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+        },
+        required: ['id'],
+        type: 'object',
+      },
+      name: 'execute_path',
     },
   ]
 

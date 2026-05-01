@@ -8,7 +8,7 @@ interface Props {
   context: PluginContext
 }
 
-const ALL_TOOLS = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path'] as const
+const ALL_TOOLS = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path', 'move_to', 'go_home', 'execute_path'] as const
 const CONSENT_KEY = 'webmcp:relay:consented'
 
 type T = (typeof translations)[keyof typeof translations]
@@ -22,6 +22,9 @@ function toolDesc(name: (typeof ALL_TOOLS)[number], t: T): string {
     list_user_robots: t.toolDescListUserRobots,
     list_paths: t.toolDescListPaths,
     read_path: t.toolDescReadPath,
+    move_to: t.toolDescMoveTo,
+    go_home: t.toolDescGoHome,
+    execute_path: t.toolDescExecutePath,
   }
 
   return map[name]
