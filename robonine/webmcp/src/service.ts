@@ -41,7 +41,8 @@ export interface McpService {
   readonly isActive: boolean
   readonly registeredTools: string[]
   readonly relayConnected: boolean
-  reconnect: () => void
+  readonly started: boolean
+  connect(): void
 }
 
 const ALL_TOOL_NAMES = ['robonine', 'robot_list', 'robot_get_position', 'robot_stop', 'user_robot_list', 'path_list', 'path_read']
@@ -72,7 +73,8 @@ export const PluginService: PluginServiceFactory = (ctx) => {
     user_robot_list: async () => ctx.listUserRobots(),
   }
 
-  let reconnect: () => void = () => {}
+  let attempt: () => void = () => {}
+  let started = false
 
   function text(data: unknown): McpToolResult {
     return { content: [{ text: typeof data === 'string' ? data : JSON.stringify(data, null, 2), type: 'text' }] }
@@ -233,8 +235,7 @@ export const PluginService: PluginServiceFactory = (ctx) => {
       }
     }
 
-    attempt()
-
+    // Return attempt without calling it — caller decides when to start
     return attempt
   }
 
@@ -244,14 +245,21 @@ export const PluginService: PluginServiceFactory = (ctx) => {
     initializeWebMCPPolyfill()
   }
   registerWebMcp()
-  reconnect = connectRelay()
+  attempt = connectRelay()
+
+  function connect(): void {
+    if (!started) {
+      started = true
+      attempt()
+    }
+  }
 
   const service: McpService = {
     get isActive() {
       return getModelContext() !== null
     },
-    get reconnect() {
-      return reconnect
+    get started() {
+      return started
     },
     get registeredTools() {
       return [...registeredTools]
@@ -259,6 +267,7 @@ export const PluginService: PluginServiceFactory = (ctx) => {
     get relayConnected() {
       return relayConnected
     },
+    connect,
   }
 
   return service

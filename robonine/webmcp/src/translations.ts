@@ -12,6 +12,11 @@ export const translations = {
     relayHowTo: 'How to connect',
     toolsSectionTitle: 'Registered tools',
     toolAlwaysOn: 'Always available',
+    consentTitle: 'One-time permission needed',
+    consentBody: "MCP Bridge connects to a small server running on your computer so your AI assistant (like Claude) can read your robot's status and send it commands.",
+    consentNote: 'Your browser will ask for permission to allow this — click Allow when it appears. The connection goes only to your own machine.',
+    consentAllow: 'Got it, connect',
+    consentSkip: 'Not now',
   },
   ru: {
     title: 'MCP Мост',
@@ -26,5 +31,10 @@ export const translations = {
     relayHowTo: 'Как подключить',
     toolsSectionTitle: 'Зарегистрированные инструменты',
     toolAlwaysOn: 'Всегда доступен',
+    consentTitle: 'Необходимо одноразовое разрешение',
+    consentBody: 'MCP Мост подключается к серверу на вашем компьютере, чтобы AI-ассистент (например, Claude) мог читать состояние робота и отправлять ему команды.',
+    consentNote: 'Браузер запросит разрешение на это подключение — нажмите «Разрешить», когда появится запрос. Соединение устанавливается только с вашим компьютером.',
+    consentAllow: 'Понятно, подключить',
+    consentSkip: 'Не сейчас',
   },
 } satisfies Record<string, Record<string, string>>
