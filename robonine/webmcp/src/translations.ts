@@ -1,7 +1,7 @@
 export const translations = {
   en: {
     title: 'MCP Bridge',
-    description: 'Exposes robot and workspace data to AI assistants via WebMCP and a local MCP server relay.',
+    description: 'Exposes robot and workspace data to AI assistants via WebMCP or a local MCP server relay.',
     statusActive: 'WebMCP active',
     statusInactive: 'WebMCP inactive',
     statusNote: 'WebMCP is not available. Enable it in Chrome 146+ via chrome://flags → "WebMCP Testing", then relaunch.',
@@ -24,7 +24,7 @@ export const translations = {
   },
   ru: {
     title: 'MCP Мост',
-    description: 'Предоставляет данные о роботе и рабочем пространстве AI-ассистентам через WebMCP и локальный MCP-сервер.',
+    description: 'Предоставляет данные о роботе и рабочем пространстве AI-ассистентам через WebMCP или локальный MCP-сервер.',
     statusActive: 'WebMCP активен',
     statusInactive: 'WebMCP неактивен',
     statusNote: 'WebMCP недоступен. Включите его в Chrome 146+ через chrome://flags → "WebMCP Testing", затем перезапустите браузер.',
