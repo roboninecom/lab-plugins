@@ -1,0 +1,7 @@
+{
+  "name": "@robonine/plugin-mcp",
+  "private": true,
+  "dependencies": {
+    "@mcp-b/webmcp-polyfill": "^2.2.0"
+  }
+}

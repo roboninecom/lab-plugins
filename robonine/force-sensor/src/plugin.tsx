@@ -35,7 +35,7 @@ function ForceGauge({ valueN }: { valueN: number }) {
 
   return (
     <svg viewBox="0 0 200 118" className="w-full">
-      <path d={trackD} fill="none" strokeWidth={sw} strokeLinecap="round" className="stroke-muted-foreground/25" />
+      <path d={trackD} fill="none" strokeWidth={sw} strokeLinecap="round" stroke="#e5e7eb" />
       {valueD && <path d={valueD} fill="none" strokeWidth={sw} strokeLinecap="round" stroke={strokeColor} />}
       <text x="100" y="84" textAnchor="middle" fontSize="24" fontWeight="700" className="fill-foreground" style={{ fontVariantNumeric: 'tabular-nums' }}>
         {valueN.toFixed(2)} N
