@@ -206,7 +206,7 @@ export const PluginService: PluginServiceFactory = (ctx) => {
     }
   }
 
-  function connectRelay(): () => void {
+  function connectRelay(): { attempt: () => void } {
     let retryTimer: ReturnType<typeof setTimeout> | null = null
     let activeWs: WebSocket | null = null
 
@@ -291,21 +291,19 @@ export const PluginService: PluginServiceFactory = (ctx) => {
       }
     }
 
-    // Return attempt without calling it — caller decides when to start
-    return attempt
+    // Return attempt without calling — caller decides when to start
+    return { attempt }
   }
 
-  // Initialize polyfill if extension has not already provided navigator.modelContext,
-  // then register tools synchronously so the extension can list them immediately.
-  if (!getModelContext()) {
-    initializeWebMCPPolyfill()
-  }
-  registerWebMcp()
-  attempt = connectRelay()
+  ;({ attempt } = connectRelay())
 
   function connect(): void {
     if (!started) {
       started = true
+      if (!getModelContext()) {
+        initializeWebMCPPolyfill()
+      }
+      registerWebMcp()
       attempt()
     }
   }
