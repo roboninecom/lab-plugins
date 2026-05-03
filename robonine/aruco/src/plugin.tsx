@@ -360,7 +360,9 @@ export function PluginRoot({ context }: Props) {
           <div className="rounded-lg border bg-card p-5">
             <p className="text-sm text-muted-foreground">{t.noCameras}</p>
           </div>
-          <p className="text-xs text-muted-foreground break-words">{t.serviceNote}</p>
+          <p className="text-xs text-muted-foreground" style={{ wordWrap: 'break-word' }}>
+            {t.serviceNote}
+          </p>
         </div>
       </div>
     )
@@ -382,7 +384,7 @@ export function PluginRoot({ context }: Props) {
         </div>
 
         {/* Controls + detections */}
-        <div className="space-y-4 lg:w-64 lg:shrink-0">
+        <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '250px' }}>
           <h2 className="hidden lg:block text-lg font-semibold">{t.title}</h2>
 
           {/* Status */}
@@ -469,7 +471,9 @@ export function PluginRoot({ context }: Props) {
           </div>
 
           {!context.connection.connected && <p className="text-xs text-muted-foreground break-words">{t.connectRobotNote}</p>}
-          <p className="text-xs text-muted-foreground break-words">{t.serviceNote}</p>
+          <p className="text-xs text-muted-foreground" style={{ wordWrap: 'break-word' }}>
+            {t.serviceNote}
+          </p>
         </div>
       </div>
     </>
