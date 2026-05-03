@@ -22,35 +22,54 @@ function loadOpenCV(): Promise<void> {
 
   loadPromise = new Promise<void>((resolve, reject) => {
     const win = window as Record<string, unknown>
-    const cv = win['cv'] as Record<string, unknown> | undefined
-
-    // Already initialised
+    const cur = win['cv'] as Record<string, unknown> | undefined
     const script = document.createElement('script')
 
-    if (cv && typeof cv['Mat'] === 'function') {
+    if (cur && typeof cur['Mat'] === 'function') {
       resolve()
 
       return
     }
 
-    // Set onRuntimeInitialized before injecting the script so emscripten picks it up
-    const existingModule = (win['Module'] as Record<string, unknown>) ?? {}
-    const existingCallback = existingModule['onRuntimeInitialized'] as (() => void) | undefined
-
-    win['Module'] = {
-      ...existingModule,
-      onRuntimeInitialized() {
-        existingCallback?.()
-        resolve()
-      },
-    }
-
     script.src = OPENCV_URL
     script.async = true
+
+    script.onload = () => {
+      const cv = win['cv'] as Record<string, unknown> | undefined
+
+      if (!cv) {
+        loadPromise = null
+        reject(new Error(`OpenCV.js ${OPENCV_VERSION} failed to initialise`))
+
+        return
+      }
+
+      // opencv.js 4.x exposes Module["then"] which fires after onRuntimeInitialized.
+      if (typeof cv['then'] === 'function') {
+        ;(cv as { then: (fn: () => void) => void }).then(() => resolve())
+
+        return
+      }
+
+      if (typeof cv['Mat'] === 'function') {
+        resolve()
+
+        return
+      }
+
+      const prev = cv['onRuntimeInitialized'] as (() => void) | undefined
+
+      cv['onRuntimeInitialized'] = () => {
+        prev?.()
+        resolve()
+      }
+    }
+
     script.onerror = () => {
       loadPromise = null
       reject(new Error(`Failed to load OpenCV.js ${OPENCV_VERSION}`))
     }
+
     document.head.appendChild(script)
   })
 
