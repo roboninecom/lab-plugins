@@ -4,10 +4,13 @@ interface Translations {
   statusLoading: string
   statusReady: string
   statusError: string
+  connectRobotNote: string
   serviceNote: string
   noCameras: string
   camera: string
   dictionary: string
+  markerSize: string
+  markerSizeUnit: string
   detectedMarkers: string
   noMarkers: string
   local: string
@@ -21,10 +24,13 @@ export const translations: Record<string, Translations> = {
     statusLoading: 'Loading OpenCV…',
     statusReady: 'Ready',
     statusError: 'OpenCV unavailable',
-    serviceNote: 'This plugin also runs as a background service. Other plugins can call context.service("aruco").detectMarkers(imageData).',
+    connectRobotNote: "Connect a robot to see each marker's position in the robot's coordinate frame.",
+    serviceNote: 'This plugin also runs as a background service. Other plugins can call context.service("aruco").detectMarkers(imageData, options).',
     noCameras: 'No cameras available. Connect a camera to start detection.',
     camera: 'Camera',
     dictionary: 'Dictionary',
+    markerSize: 'Marker size',
+    markerSizeUnit: 'cm',
     detectedMarkers: 'Detected markers',
     noMarkers: 'No markers in frame',
     local: 'local',
@@ -36,10 +42,13 @@ export const translations: Record<string, Translations> = {
     statusLoading: 'Загрузка OpenCV…',
     statusReady: 'Готово',
     statusError: 'OpenCV недоступен',
-    serviceNote: 'Плагин также работает как фоновый сервис. Другие плагины могут вызвать context.service("aruco").detectMarkers(imageData).',
+    connectRobotNote: 'Подключите робота, чтобы видеть позицию каждого маркера в системе координат робота.',
+    serviceNote: 'Плагин также работает как фоновый сервис. Другие плагины могут вызвать context.service("aruco").detectMarkers(imageData, options).',
     noCameras: 'Камеры не найдены. Подключите камеру для запуска детекции.',
     camera: 'Камера',
     dictionary: 'Словарь',
+    markerSize: 'Размер маркера',
+    markerSizeUnit: 'см',
     detectedMarkers: 'Обнаруженные маркеры',
     noMarkers: 'Маркеры в кадре отсутствуют',
     local: 'локальная',
