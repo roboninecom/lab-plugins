@@ -1,0 +1,19 @@
+{
+  "name": "@robonine/plugins",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --import tsx/esm scripts/buildPlugins.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@mcp-b/webmcp-polyfill": "^2.2.0",
+    "@robonine/plugin-sdk": "github:roboninecom/plugin-sdk",
+    "@types/react": "^19",
+    "esbuild": "^0.25.4",
+    "lucide-react": "^1.8.0",
+    "react": "^19.2.5",
+    "tsx": "^4.21.0",
+    "typescript": "^5"
+  }
+}
