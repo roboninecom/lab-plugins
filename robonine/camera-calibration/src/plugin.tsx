@@ -67,6 +67,7 @@ export function PluginRoot({ context }: Props) {
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [detectResult, setDetectResult] = useState<'none' | 'found' | 'notfound'>('none')
   const [poseStatuses, setPoseStatuses] = useState<PoseStatus[]>([])
+  const [poseScale, setPoseScale] = useState(1.0)
   const [calibResult, setCalibResult] = useState<CameraCalibration | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -75,7 +76,7 @@ export function PluginRoot({ context }: Props) {
   const cancelRef = useRef(false)
   const animRef = useRef<number>(0)
   const selectedCamera = useMemo<CameraHandle | null>(() => context.cameras.find((c) => c.id === selectedCameraId) ?? null, [context.cameras, selectedCameraId])
-  const poses = useMemo(() => (context.robotConfig ? generateCalibrationPoses(context.robotConfig) : null), [context.robotConfig])
+  const poses = useMemo(() => (context.robotConfig ? generateCalibrationPoses(context.robotConfig, poseScale) : null), [context.robotConfig, poseScale])
   const isConnected = context.connection.connected
   const calibration = context.robotConfig
   const robotId = context.connection.robotId
@@ -581,6 +582,14 @@ export function PluginRoot({ context }: Props) {
               {detectResult === 'found' ? t.boardFound : t.boardNotFound}
             </p>
           )}
+
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.poseRange}</p>
+              <span className="text-xs text-muted-foreground">{Math.round(poseScale * 100)}%</span>
+            </div>
+            <input type="range" min={0.2} max={1.0} step={0.1} value={poseScale} onChange={(e) => setPoseScale(Number(e.target.value))} className="w-full accent-primary" />
+          </div>
 
           <div className="flex gap-2 pt-2">
             <Button variant="outline" onClick={() => setStep('idle')}>

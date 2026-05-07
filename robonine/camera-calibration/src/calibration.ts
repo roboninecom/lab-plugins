@@ -106,6 +106,8 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
       return null
     }
 
+    // Pass all candidates; orderIntoGrid takes the top-n for its gap-based attempt
+    // and falls back to a threshold-based pass over all of them.
     return orderIntoGrid(candidates, cols, rows)
   } finally {
     blurred.delete()
@@ -123,10 +125,10 @@ function detectGFTT(cv: CV, gray: CV, cols: number, rows: number): Float32Array 
   const cornersMat = new cv.Mat()
 
   try {
-    // Request a few extra corners to handle background noise.
-    const maxCorners = n + Math.ceil(n * 0.3)
-    // minDistance: keep corners well-separated (checkerboard corners are one square apart).
-    const minDist = Math.sqrt((gray.cols * gray.rows) / (n * 9))
+    const maxCorners = n + cols
+    // Smaller minDist so that corners at the compressed end of a perspective-distorted
+    // board (which can be as close as 10–15 px) are not suppressed by NMS.
+    const minDist = Math.max(5, Math.sqrt((gray.cols * gray.rows) / (n * 36)))
     const pts: { x: number; y: number }[] = []
 
     cv.goodFeaturesToTrack(gray, cornersMat, maxCorners, 0.005, minDist)
@@ -147,61 +149,126 @@ function detectGFTT(cv: CV, gray: CV, cols: number, rows: number): Float32Array 
 
 // ── Grid ordering ─────────────────────────────────────────────────────────────
 
-/** Arrange unordered detected corners into a row-major cols×rows grid. */
+/**
+ * Arrange unordered detected corners into a row-major cols×rows grid.
+ *
+ * Two attempts are made:
+ *
+ * 1. Gap-based on the top-n candidates (highest count / quality, as provided by
+ *    the caller). Selects the (rows-1) largest consecutive y-gaps as row boundaries,
+ *    which correctly handles non-uniform row spacing under heavy perspective.
+ *    Using only the top-n avoids noise corners between rows splitting the large
+ *    inter-row gaps below the detection threshold.
+ *
+ * 2. Uniform-threshold fallback over all candidates. Mirrors the classic approach:
+ *    group by 60 % of the average row spacing, skip small groups, require ≥ rows
+ *    valid groups. Handles moderate perspective and is robust to extra noise.
+ */
 function orderIntoGrid(corners: { x: number; y: number }[], cols: number, rows: number): Float32Array | null {
-  const pts = [...corners].sort((a, b) => a.y - b.y)
-  const groups: { x: number; y: number }[][] = []
-  const result = new Float32Array(cols * rows * 2)
-  let idx = 0
+  const n = cols * rows
+  const allByY = [...corners].sort((a, b) => a.y - b.y)
 
-  if (corners.length < cols * rows) {
+  if (corners.length < n) {
     return null
   }
 
-  const yRange = pts[pts.length - 1].y - pts[0].y
+  const yRange = allByY[allByY.length - 1].y - allByY[0].y
 
   if (yRange < 5) {
     return null
   }
 
-  // Adaptive row-grouping threshold: 60 % of the estimated inter-row spacing.
-  const rowThresh = (yRange / (rows - 1)) * 0.6
+  // ── Attempt 1: gap-based on top-n ───────────────────────────────────────────
+  // corners[] is ordered by count desc (contour) or quality desc (GFTT), so
+  // corners.slice(0, n) gives the n most reliable candidates.
+  const topN = [...corners.slice(0, n)].sort((a, b) => a.y - b.y)
+  const gapResult = gapGrid(topN, cols, rows)
+
+  if (gapResult) {
+    return gapResult
+  }
+
+  // ── Attempt 2: uniform threshold on all candidates ───────────────────────────
+  return threshGrid(allByY, cols, rows)
+}
+
+function gapGrid(pts: { x: number; y: number }[], cols: number, rows: number): Float32Array | null {
+  const gaps = pts.slice(1).map((p, i) => ({ gap: p.y - pts[i].y, idx: i + 1 }))
+  const groups: { x: number; y: number }[][] = []
   let cur: { x: number; y: number }[] = [pts[0]]
+  const result = new Float32Array(cols * rows * 2)
+  let idx = 0
+
+  if (pts.length < cols * rows) {
+    return null
+  }
+
+  gaps.sort((a, b) => b.gap - a.gap)
+
+  const boundaries = new Set(gaps.slice(0, rows - 1).map((g) => g.idx))
+
+  for (let i = 1; i < pts.length; i++) {
+    if (boundaries.has(i)) {
+      groups.push(cur)
+      cur = [pts[i]]
+    } else {
+      cur.push(pts[i])
+    }
+  }
+  groups.push(cur)
+
+  groups.sort((a, b) => a.reduce((s, p) => s + p.y, 0) / a.length - b.reduce((s, p) => s + p.y, 0) / b.length)
+
+  for (const group of groups) {
+    const row = group.sort((a, b) => a.x - b.x).slice(0, cols)
+
+    if (row.length < cols) {
+      return null
+    }
+
+    for (const p of row) {
+      result[idx++] = p.x
+      result[idx++] = p.y
+    }
+  }
+
+  return result
+}
+
+function threshGrid(pts: { x: number; y: number }[], cols: number, rows: number): Float32Array | null {
+  const n = cols * rows
+  const yRange = pts[pts.length - 1].y - pts[0].y
+  const rowThresh = (yRange / (rows - 1)) * 0.6
+  const groups: { x: number; y: number }[][] = []
+  let cur: { x: number; y: number }[] = [pts[0]]
+  let idx = 0
 
   for (let i = 1; i < pts.length; i++) {
     if (pts[i].y - cur[0].y < rowThresh) {
       cur.push(pts[i])
     } else {
       if (cur.length >= cols) {
-        groups.push(cur.sort((a, b) => a.x - b.x))
+        groups.push(cur)
       }
       cur = [pts[i]]
     }
   }
   if (cur.length >= cols) {
-    groups.push(cur.sort((a, b) => a.x - b.x))
+    groups.push(cur)
   }
 
   if (groups.length < rows) {
     return null
   }
 
-  // Sort groups by mean y, keep the first `rows`.
-  groups.sort((a, b) => {
-    const ay = a.reduce((s, p) => s + p.y, 0) / a.length
-    const by_ = b.reduce((s, p) => s + p.y, 0) / b.length
+  groups.sort((a, b) => a.reduce((s, p) => s + p.y, 0) / a.length - b.reduce((s, p) => s + p.y, 0) / b.length)
 
-    return ay - by_
-  })
+  const result = new Float32Array(n * 2)
 
   for (let r = 0; r < rows; r++) {
     const row = groups[r].sort((a, b) => a.x - b.x).slice(0, cols)
 
-    if (r >= groups.length) {
-      return null
-    }
-
-    if (row.length !== cols) {
+    if (row.length < cols) {
       return null
     }
 

@@ -50,6 +50,7 @@ interface Translations {
   savedTitle: string
   savedDesc: string
   doneButton: string
+  poseRange: string
   // errors
   tooFewCaptures: string
   calibrationFailed: string
@@ -104,6 +105,7 @@ export const translations: Record<string, Translations> = {
     savedTitle: 'Calibration saved',
     savedDesc: 'The camera intrinsics have been saved to the robot.',
     doneButton: 'Done',
+    poseRange: 'Pose deviation',
     tooFewCaptures: 'Not enough captures. At least 10 successful poses are required.',
     calibrationFailed: 'Calibration failed. Try again with better lighting or a flatter board.',
     saveFailed: 'Failed to save calibration.',

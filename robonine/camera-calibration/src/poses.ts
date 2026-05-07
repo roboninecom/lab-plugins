@@ -29,7 +29,7 @@ const GRIPPER_RE = /gripper|finger|hand/i
  * Returns joint position arrays ordered by servo ID ascending, matching the
  * order expected by context.servo.setJointPositions().
  */
-export function generateCalibrationPoses(robotConfig: PluginRobotConfig): number[][] {
+export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale = 1.0): number[][] {
   const sortedServos = Object.entries(robotConfig.jointServoId)
     .sort(([, a], [, b]) => a - b)
     .map(([name, id]) => ({ name, id }))
@@ -60,7 +60,7 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig): number
       const gi = armIndices[ai]
 
       if (gi !== undefined) {
-        p[gi] += delta
+        p[gi] += delta * scale
       }
     }
 
