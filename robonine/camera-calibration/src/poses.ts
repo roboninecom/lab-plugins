@@ -139,6 +139,72 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
         [WROLL, 0.0],
       ]),
     )
+
+    // ── Group 5: Lateral + roll combos (4 poses) ─────────────────────────
+    // Board in different image quadrants while also rotated — strongest
+    // constraint on principal point (cx, cy).
+    for (const [pan, roll] of [
+      [-0.25, 0.6],
+      [-0.25, -0.6],
+      [0.25, 0.6],
+      [0.25, -0.6],
+    ] as Array<[number, number]>) {
+      poses.push(
+        makePose([
+          [BASE, pan],
+          [WROLL, roll],
+          [WFLEX, -0.1],
+        ]),
+      )
+    }
+
+    // ── Group 6: Reach + roll (3 poses) ──────────────────────────────────
+    // Combines distance change with in-plane rotation for better focal-length
+    // vs distortion decoupling.
+    poses.push(
+      makePose([
+        [SHOULDER, -0.3],
+        [ELBOW, -0.3],
+        [WFLEX, -0.15],
+      ]),
+    )
+    poses.push(
+      makePose([
+        [SHOULDER, 0.15],
+        [ELBOW, 0.15],
+        [WROLL, 0.6],
+      ]),
+    )
+    poses.push(
+      makePose([
+        [SHOULDER, 0.15],
+        [ELBOW, 0.15],
+        [WROLL, -0.6],
+      ]),
+    )
+
+    // ── Group 7: Strong tilt (3 poses) ───────────────────────────────────
+    // Steep out-of-plane tilt constrains cx/cy better than mild tilt.
+    poses.push(
+      makePose([
+        [WFLEX, -0.5],
+        [WROLL, 0.0],
+      ]),
+    )
+    poses.push(
+      makePose([
+        [BASE, -0.2],
+        [WFLEX, -0.35],
+        [WROLL, 0.4],
+      ]),
+    )
+    poses.push(
+      makePose([
+        [BASE, 0.2],
+        [WFLEX, -0.35],
+        [WROLL, -0.4],
+      ]),
+    )
   }
 
   return poses

@@ -19,8 +19,8 @@ type PoseStatus = 'pending' | 'moving' | 'captured' | 'missed'
 const BOARD_COLS = 7
 const BOARD_ROWS = 9
 const SQUARE_SIZE_M = 0.02
-const MIN_CAPTURES = 10
-const SETTLE_MS = 1500
+const MIN_CAPTURES = 15
+const SETTLE_MS = 2000
 
 interface Props {
   context: PluginContext
@@ -226,9 +226,9 @@ export function PluginRoot({ context }: Props) {
     const gray = toGray(cv, imageData)
 
     try {
-      const corners = detectChessboardCorners(cv, gray, BOARD_COLS, BOARD_ROWS)
+      const result = detectChessboardCorners(cv, gray, BOARD_COLS, BOARD_ROWS)
 
-      return corners ? { found: true, corners, cols: BOARD_COLS, rows: BOARD_ROWS } : { found: false, corners: new Float32Array(), cols: BOARD_COLS, rows: BOARD_ROWS }
+      return result ? { found: true, ...result } : { found: false, corners: new Float32Array(), cols: BOARD_COLS, rows: BOARD_ROWS }
     } finally {
       gray.delete()
     }
@@ -432,8 +432,15 @@ export function PluginRoot({ context }: Props) {
         imgPt.delete()
       }
 
+      console.log(`[calib] ${imagePointsList.length} captures, imageSize=${imageWidth}×${imageHeight}`)
+
       try {
         rms = cv.calibrateCameraExtended(objPtsVec, imgPtsVec, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, stdDevIntrinsics, stdDevExtrinsics, perViewErrors)
+        console.log(
+          `[calib] RMS=${rms.toFixed(3)} per-view errors: ${Array.from(perViewErrors.data64F as Float64Array)
+            .map((v) => v.toFixed(1))
+            .join(', ')}`,
+        )
       } finally {
         objPtsVec.delete()
         imgPtsVec.delete()
