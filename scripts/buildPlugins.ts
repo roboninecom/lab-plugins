@@ -1,12 +1,11 @@
 import { fileURLToPath } from 'node:url'
+import { promisify } from 'node:util'
 import * as esbuild from 'esbuild'
-import * as fs from 'node:fs'
 import * as path from 'node:path'
 import * as zlib from 'node:zlib'
-import { promisify } from 'node:util'
+import * as fs from 'node:fs'
 
 const gzip = promisify(zlib.gzip)
-
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const pluginsDir = path.join(root, 'robonine')
@@ -65,10 +64,7 @@ async function buildPlugin(slug: string) {
 
   fs.mkdirSync(outDir, { recursive: true })
 
-  const nodePaths = [
-    path.join(root, 'node_modules'),
-    ...(fs.existsSync(pluginNodeModules) ? [pluginNodeModules] : []),
-  ]
+  const nodePaths = [path.join(root, 'node_modules'), ...(fs.existsSync(pluginNodeModules) ? [pluginNodeModules] : [])]
 
   await esbuild.build({
     entryPoints: [entryPoint],
