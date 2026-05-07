@@ -2,43 +2,68 @@
 type CV = any
 
 /**
- * Detect inner checkerboard corners using available OpenCV 4.13.0 functions.
+ * Detect inner checkerboard corners.
  *
- * Two approaches are tried in order:
+ * Two strategies in order:
  *
- * 1. Contour-based: adaptiveThreshold → findContours → approxPolyDP → cluster quad corners.
- *    Inner corners appear in ≥3 square quads, so they cluster with high count.
+ * 1. Contour-based: adaptiveThreshold → findContours → approxPolyDP → cluster
+ *    quad corners. Uses count ≥ 4 then count ≥ 3 tiers only — count ≥ 2 is
+ *    excluded because it produces 150+ noisy candidates that send the calibration
+ *    solver to a degenerate minimum (RMS > 100 px, fx/fy ratio > 8).
  *
- * 2. goodFeaturesToTrack fallback: Shi-Tomasi detects strong corners; checkerboard inner
- *    corners score highly and get found first when the board fills a reasonable portion of
- *    the image.
+ * 2. goodFeaturesToTrack fallback.
  *
- * Returns Float32Array of [x0,y0, x1,y1, ...] in row-major order (top row first,
+ * Positions are refined with cornerSubPix after detection (when available).
+ * Accepts partial boards (≥ 67 % of rows) so fisheye views where one board row
+ * is outside the frame still contribute to calibration.
+ *
+ * Returns Float32Array of [x0,y0, x1,y1, …] in row-major order (top row first,
  * left-to-right within each row), or null when detection fails.
  */
 export function detectChessboardCorners(cv: CV, gray: CV, cols: number, rows: number): { corners: Float32Array; cols: number; rows: number } | null {
-  for (const [c, r] of [
-    [cols, rows],
-    [rows, cols],
-  ] as [number, number][]) {
-    const corners = detectContour(cv, gray, c, r) ?? detectGFTT(cv, gray, c, r)
+  const raw = detectContour(cv, gray, cols, rows) ?? detectGFTT(cv, gray, cols, rows)
 
-    console.log(`[chess] detect ${c}×${r} on ${gray.cols}×${gray.rows} image`)
+  console.log(`[chess] detect ${cols}×${rows} on ${gray.cols}×${gray.rows} image`)
 
-    if (corners) {
-      const nRows = corners.length / (c * 2)
+  if (!raw) {
+    console.log('[chess] FAILED')
 
-      console.log(`[chess] SUCCESS: ${c}×${nRows}` + (nRows < r ? ` (partial, needed ${r})` : ''))
-
-      return { corners, cols: c, rows: nRows }
-    }
-
-    console.log(`[chess] ${c}×${r} — both contour and GFTT returned null`)
+    return null
   }
 
-  console.log('[chess] FAILED — all orientations failed')
+  const corners = refineSubPix(cv, gray, raw)
+  const nRows = corners.length / (cols * 2)
 
-  return null
+  console.log(`[chess] SUCCESS: ${cols}×${nRows}` + (nRows < rows ? ` (partial, needed ${rows})` : ''))
+
+  return { corners, cols, rows: nRows }
+}
+
+// ── Sub-pixel refinement ──────────────────────────────────────────────────────
+
+function refineSubPix(cv: CV, gray: CV, corners: Float32Array): Float32Array {
+  const n = corners.length / 2
+
+  if (typeof cv.cornerSubPix !== 'function') {
+    return corners
+  }
+
+  const mat = cv.matFromArray(n, 1, cv.CV_32FC2, Array.from(corners))
+
+  try {
+    const result = new Float32Array(n * 2)
+
+    cv.cornerSubPix(gray, mat, new cv.Size(11, 11), new cv.Size(-1, -1), new cv.TermCriteria(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+
+    for (let i = 0; i < n; i++) {
+      result[i * 2] = mat.data32F[i * 2]
+      result[i * 2 + 1] = mat.data32F[i * 2 + 1]
+    }
+
+    return result
+  } finally {
+    mat.delete()
+  }
 }
 
 // ── Approach 1: contour-based ─────────────────────────────────────────────────
@@ -58,28 +83,18 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
     // are typically 1–5 px apart after approxPolyDP on straight-sided quads) but
     // small enough to NOT merge adjacent inner corners at the compressed end of a
     // perspective-foreshortened board (which can be as close as 8–10 px).
-    // 0.08 × avg-spacing ≈ 10 px at 1280×720; adjacent far corners are ~10 px.
     const CLUSTER_PX = Math.max(4, Math.round(Math.sqrt(imgArea / n) * 0.08))
     const clusters: { x: number; y: number; count: number }[] = []
-    let totalContours = 0
-    let quadCount = 0
-
-    console.log(`[contour] imgArea=${imgArea} n=${n} CLUSTER_PX=${CLUSTER_PX}`)
 
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 1, 1)
     cv.adaptiveThreshold(blurred, binary, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 21, 5)
     cv.bitwise_not(binary, inv)
 
-    // Very permissive: accept squares from ~4×4 px up to 10 % of the image.
-    // The far end of a perspective-tilted board may have very small squares.
     const minArea = Math.max(16, imgArea * 0.00005)
     const maxArea = imgArea * 0.1
 
-    console.log(`[contour] minArea=${minArea.toFixed(0)} maxArea=${maxArea.toFixed(0)}`)
-
     for (const src of [binary, inv]) {
       cv.findContours(src, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-      totalContours += contours.size()
 
       for (let i = 0; i < contours.size(); i++) {
         const contour = contours.get(i)
@@ -89,19 +104,14 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
           const peri = cv.arcLength(contour, true)
           const poly = new cv.Mat()
 
-          // Slightly larger epsilon to keep quads convex under heavy perspective.
           cv.approxPolyDP(contour, poly, peri * 0.06, true)
 
-          // Accept 4-vertex polygons; skip the strict convexity check because
-          // heavily foreshortened squares can appear slightly non-convex after
-          // pixel-level rounding in approxPolyDP.
           if (poly.rows === 4) {
-            quadCount++
-
             for (let j = 0; j < 4; j++) {
               allPts.push([poly.data32S[j * 2], poly.data32S[j * 2 + 1]])
             }
           }
+
           poly.delete()
         }
 
@@ -109,10 +119,8 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
       }
     }
 
-    console.log(`[contour] totalContours=${totalContours} quads=${quadCount} allPts=${allPts.length} (need ≥${n * 2})`)
-
     if (allPts.length < n * 2) {
-      console.log(`[contour] FAIL: not enough quad corners`)
+      console.log(`[contour] FAIL: allPts=${allPts.length} < ${n * 2}`)
 
       return null
     }
@@ -137,10 +145,6 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
       }
     }
 
-    // True inner corners are shared by 4 squares; allow ≥ 2 for partial detection
-    // at the board boundary or for cameras at extreme angles.
-    const candidates = clusters.filter((c) => c.count >= 2).sort((a, b) => b.count - a.count)
-
     const countDist = clusters.reduce(
       (acc, c) => {
         acc[c.count] = (acc[c.count] ?? 0) + 1
@@ -150,24 +154,18 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
       {} as Record<number, number>,
     )
 
-    console.log(`[contour] clusters=${clusters.length} count≥2: ${candidates.length} (need ≥${n}) distribution: ${JSON.stringify(countDist)}`)
+    console.log(`[contour] clusters=${clusters.length} distribution: ${JSON.stringify(countDist)}`)
 
-    if (candidates.length < n) {
-      console.log(`[contour] FAIL: not enough high-count clusters`)
-
-      return null
-    }
-
-    // Try progressively looser count thresholds to keep the candidate cloud clean.
-    // True inner corners appear in 4 squares (count=4); noise clusters at count=2.
-    // Fewer candidates → more reliable PCA axis → better gap-based grouping.
-    for (const minCount of [4, 3, 2] as const) {
+    // count ≥ 4 then ≥ 3 only.
+    // count ≥ 2 is deliberately skipped: it yields 150–230 noisy candidates that
+    // produce false grid detections with reprojection errors of 50–250 px.
+    for (const minCount of [4, 3] as const) {
       const tier = clusters.filter((c) => c.count >= minCount).sort((a, b) => b.count - a.count)
+
+      console.log(`[contour] trying count≥${minCount}: ${tier.length} candidates (need ≥${n})`)
 
       if (tier.length >= n) {
         const result = orderIntoGrid(tier, cols, rows)
-
-        console.log(`[contour] trying count≥${minCount}: ${tier.length} candidates`)
 
         if (result) {
           return result
@@ -193,20 +191,14 @@ function detectGFTT(cv: CV, gray: CV, cols: number, rows: number): Float32Array 
 
   try {
     const maxCorners = n + cols
-    // Keep minDist small so compressed far-row corners (as close as 8 px at steep
-    // perspective) are not suppressed by NMS.  Cap at 8 to avoid over-detection.
     const minDist = Math.max(4, Math.min(8, Math.sqrt((gray.cols * gray.rows) / (n * 100))))
     const pts: { x: number; y: number }[] = []
-
-    console.log(`[gftt] maxCorners=${maxCorners} minDist=${minDist.toFixed(1)}`)
 
     cv.goodFeaturesToTrack(gray, cornersMat, maxCorners, 0.005, minDist)
 
     console.log(`[gftt] detected=${cornersMat.rows} (need ≥${n})`)
 
     if (cornersMat.rows < n) {
-      console.log(`[gftt] FAIL: too few corners detected`)
-
       return null
     }
 
@@ -224,42 +216,23 @@ function detectGFTT(cv: CV, gray: CV, cols: number, rows: number): Float32Array 
 
 type Pt = { x: number; y: number }
 
-/**
- * Arrange unordered detected corners into a row-major cols×rows grid.
- *
- * Uses PCA to find the board's principal axes so that corners are grouped
- * correctly even when the board is rotated in the image (e.g. ±57° from wrist
- * roll poses). Six gap-based attempts are made in order:
- *
- * 1–2. PCA axes on top-n (fast, low-noise candidates)
- * 3.   Image y-axis on top-n
- * 4–5. PCA axes on ALL candidates (correct when top-n is unevenly distributed)
- * 6.   Image y-axis gap-based on ALL candidates (most robust fallback — inter-row
- *      gaps always dominate intra-row gaps regardless of board angle or noise)
- */
 function orderIntoGrid(corners: Pt[], cols: number, rows: number): Float32Array | null {
   const n = cols * rows
   const allByY = [...corners].sort((a, b) => a.y - b.y)
   let Sxx = 0
   let Syy = 0
   let Sxy = 0
+  const partialMin = Math.ceil(rows * 0.67)
 
   if (corners.length < n) {
-    console.log(`[order] FAIL: corners.length=${corners.length} < n=${n}`)
-
     return null
   }
 
   if (allByY[allByY.length - 1].y - allByY[0].y < 5) {
-    console.log(`[order] FAIL: yRange too small`)
-
     return null
   }
 
-  // top-n candidates (caller sorts by detection quality descending)
   const pts = corners.slice(0, n)
-
-  // ── PCA on the top-n corner cloud ───────────────────────────────────────────
   const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length
   const my = pts.reduce((s, p) => s + p.y, 0) / pts.length
 
@@ -299,46 +272,34 @@ function orderIntoGrid(corners: Pt[], cols: number, rows: number): Float32Array 
     }))
 
   const result =
-    // PCA axes on top-n
-    axisGrid(projSrc(pts, ax, ay, bx, by), cols, rows, 'pca-a') ??
-    axisGrid(projSrc(pts, bx, by, ax, ay), cols, rows, 'pca-b') ??
-    // y-axis on top-n
+    axisGrid(projSrc(pts, ax, ay, bx, by), cols, rows, rows, 'pca-a') ??
+    axisGrid(projSrc(pts, bx, by, ax, ay), cols, rows, rows, 'pca-b') ??
     axisGrid(
       pts.map((p) => ({ p, u: p.y, v: p.x })),
       cols,
       rows,
+      rows,
       'y-top',
     ) ??
-    // PCA axes on all candidates (top-n may be unevenly distributed across rows)
-    axisGrid(projSrc(corners, ax, ay, bx, by), cols, rows, 'pca-a-all') ??
-    axisGrid(projSrc(corners, bx, by, ax, ay), cols, rows, 'pca-b-all') ??
-    // Gap-based y-axis on ALL candidates: inter-row gaps always dominate intra-row gaps
+    axisGrid(projSrc(corners, ax, ay, bx, by), cols, rows, partialMin, 'pca-a-all') ??
+    axisGrid(projSrc(corners, bx, by, ax, ay), cols, rows, partialMin, 'pca-b-all') ??
     axisGrid(
       allByY.map((p) => ({ p, u: p.y, v: p.x })),
       cols,
       rows,
+      partialMin,
       'y-all',
     )
 
   if (result) {
     console.log(`[order] SUCCESS: ${result.length / (cols * 2)}/${rows} rows`)
   } else {
-    console.log(`[order] FAIL: all methods returned null`)
+    console.log('[order] FAIL: all methods returned null')
   }
 
   return result
 }
 
-/**
- * Gap-based grouping along the u-axis of projected points.
- * Selects the (rows-1) largest u-gaps as row boundaries; sorts within each
- * group by v.
- *
- * Oversized groups (≥ 2×cols) are iteratively split at their largest internal
- * gap — these are rows merged by perspective compression.  Accepts partial
- * results (≥ 67 % of rows) so fisheye views where one board row is missing
- * still contribute to calibration.
- */
 function axisGrid(projected: { p: Pt; u: number; v: number }[], cols: number, rows: number, label: string): Float32Array | null {
   const sorted = [...projected].sort((a, b) => a.u - b.u)
   const minRows = Math.ceil(rows * 0.67)
@@ -396,7 +357,7 @@ function axisGrid(projected: { p: Pt; u: number; v: number }[], cols: number, ro
 
     const valid = groups.filter((g) => g.length >= cols)
 
-    console.log(`[axisGrid ${label}] extra=${extra} groups=[${groups.map((g) => g.length).join(',')}] valid≥${cols}: ${valid.length} (need ${minRows}..${rows})`)
+    console.log(`[axisGrid ${label}] extra=${extra} valid≥${cols}: ${valid.length} (need ${minRows}..${rows})`)
 
     if (valid.length < minRows) {
       continue
@@ -413,6 +374,48 @@ function axisGrid(projected: { p: Pt; u: number; v: number }[], cols: number, ro
       for (const { p } of row) {
         result[idx++] = p.x
         result[idx++] = p.y
+      }
+    }
+
+    // Normalize: rows top→bottom, columns left→right in image.
+    // PCA eigenvector sign is arbitrary — without this, row/column order flips
+    // between views and gives calibrateCameraExtended contradictory 2D↔3D pairs.
+    if (nRows > 1) {
+      let firstY = 0
+      let lastY = 0
+
+      for (let c = 0; c < cols; c++) {
+        firstY += result[c * 2 + 1]
+        lastY += result[(nRows - 1) * cols * 2 + c * 2 + 1]
+      }
+
+      if (firstY > lastY) {
+        for (let r = 0; r < Math.floor(nRows / 2); r++) {
+          const a = r * cols * 2
+          const b = (nRows - 1 - r) * cols * 2
+          const tmp = result.slice(a, a + cols * 2)
+
+          result.copyWithin(a, b, b + cols * 2)
+          result.set(tmp, b)
+        }
+      }
+    }
+
+    if (cols > 1 && result[0] > result[(cols - 1) * 2]) {
+      for (let r = 0; r < nRows; r++) {
+        const base = r * cols * 2
+
+        for (let c = 0; c < Math.floor(cols / 2); c++) {
+          const ai = base + c * 2
+          const bi = base + (cols - 1 - c) * 2
+          const tx = result[ai]
+          const ty = result[ai + 1]
+
+          result[ai] = result[bi]
+          result[ai + 1] = result[bi + 1]
+          result[bi] = tx
+          result[bi + 1] = ty
+        }
       }
     }
 

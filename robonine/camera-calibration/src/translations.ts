@@ -88,7 +88,7 @@ export const translations: Record<string, Translations> = {
     poseMissed: 'Missed',
     cancelButton: 'Cancel',
     computingTitle: 'Computing calibration',
-    computingDesc: 'Running OpenCV calibrateCamera…',
+    computingDesc: 'Calculating camera parameters…',
     resultTitle: 'Calibration result',
     rmsLabel: 'Reprojection error',
     rmsGood: 'Good',

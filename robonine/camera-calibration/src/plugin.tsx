@@ -287,8 +287,6 @@ export function PluginRoot({ context }: Props) {
     await context.servo.limitSpeed(300)
 
     for (let i = 0; i < poses.length; i++) {
-      const imageData = captureFrame()
-
       if (cancelRef.current) {
         break
       }
@@ -303,7 +301,8 @@ export function PluginRoot({ context }: Props) {
 
       try {
         await context.servo.setJointPositions(poses[i])
-        await new Promise<void>((resolve) => setTimeout(resolve, SETTLE_MS))
+        // First pose moves from neutral — potentially a large travel; allow extra settle time.
+        await new Promise<void>((resolve) => setTimeout(resolve, i === 0 ? SETTLE_MS * 2 : SETTLE_MS))
       } catch {
         setPoseStatuses((prev) => {
           const next = [...prev]
@@ -319,6 +318,14 @@ export function PluginRoot({ context }: Props) {
         break
       }
 
+      // Pose 0 is a hidden warmup — just move and settle, no capture or detection.
+      if (i === 0) {
+        continue
+      }
+
+      // eslint-disable-next-line local/decls-on-top
+      const imageData = captureFrame()
+
       if (!imageData) {
         setPoseStatuses((prev) => {
           const next = [...prev]
@@ -331,15 +338,35 @@ export function PluginRoot({ context }: Props) {
       }
 
       try {
-        const { found, corners, cols, rows } = findCorners(cv, imageData)
+        let result = findCorners(cv, imageData)
+        let finalData = imageData
+
+        if (!result.found) {
+          // Extra settle then retry with a fresh frame
+          await new Promise<void>((resolve) => setTimeout(resolve, SETTLE_MS))
+
+          // eslint-disable-next-line local/decls-on-top
+          const retryData = captureFrame()
+
+          if (retryData) {
+            const retryResult = findCorners(cv, retryData)
+
+            if (retryResult.found) {
+              result = retryResult
+              finalData = retryData
+            }
+          }
+        }
+
+        const { found, corners, cols, rows } = result
 
         if (found) {
           const canvas = previewRef.current
 
           imagePointsList.push({ corners, cols, rows })
           if (!capturedWidth) {
-            capturedWidth = imageData.width
-            capturedHeight = imageData.height
+            capturedWidth = finalData.width
+            capturedHeight = finalData.height
           }
           setPoseStatuses((prev) => {
             const next = [...prev]
@@ -353,11 +380,11 @@ export function PluginRoot({ context }: Props) {
             const ctx2d = canvas.getContext('2d')
 
             if (ctx2d) {
-              if (canvas.width !== imageData.width || canvas.height !== imageData.height) {
-                canvas.width = imageData.width
-                canvas.height = imageData.height
+              if (canvas.width !== finalData.width || canvas.height !== finalData.height) {
+                canvas.width = finalData.width
+                canvas.height = finalData.height
               }
-              ctx2d.putImageData(imageData, 0, 0)
+              ctx2d.putImageData(finalData, 0, 0)
               drawCorners(canvas, corners, cols * rows, true)
             }
           }
@@ -396,7 +423,11 @@ export function PluginRoot({ context }: Props) {
       return
     }
 
+    // Yield so the final pose status (captured/missed) renders while step is still 'capturing'
+    await new Promise<void>((resolve) => setTimeout(resolve, 50))
     setStep('computing')
+    // Yield so the computing spinner renders before blocking WASM computation
+    await new Promise<void>((resolve) => setTimeout(resolve, 50))
 
     const imageWidth = capturedWidth || 640
     const imageHeight = capturedHeight || 480
@@ -656,8 +687,9 @@ export function PluginRoot({ context }: Props) {
   // ── Capturing step ────────────────────────────────────────────────────
 
   if (step === 'capturing') {
-    const captured = poseStatuses.filter((s) => s === 'captured').length
-    const total = poseStatuses.length
+    const visibleStatuses = poseStatuses.slice(1)
+    const captured = visibleStatuses.filter((s) => s === 'captured').length
+    const total = visibleStatuses.length
     const pct = total > 0 ? Math.round((captured / total) * 100) : 0
 
     return (
@@ -670,7 +702,7 @@ export function PluginRoot({ context }: Props) {
           </div>
         </div>
 
-        <div className="space-y-4 lg:shrink-0 overflow-y-auto" style={{ maxWidth: '260px', maxHeight: '80vh' }}>
+        <div className="flex flex-col gap-4 lg:shrink-0 min-h-0" style={{ maxWidth: '260px' }}>
           <h2 className="text-lg font-semibold">{t.capturingTitle}</h2>
           <p className="text-sm text-muted-foreground">{t.capturingDesc}</p>
 
@@ -686,8 +718,8 @@ export function PluginRoot({ context }: Props) {
             </div>
           </div>
 
-          <div className="space-y-1">
-            {poseStatuses.map((status, i) => (
+          <div className="flex-1 overflow-y-auto min-h-0 space-y-1">
+            {visibleStatuses.map((status, i) => (
               <div key={i} className="flex items-center gap-2 text-sm">
                 <PoseStatusDot status={status} />
                 <span className="text-muted-foreground">

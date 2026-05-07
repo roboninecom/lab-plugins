@@ -71,13 +71,13 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
   const WROLL = n - 1 // wrist roll (last arm joint)
 
   // ── Group 1: Roll sweep (7 poses) ────────────────────────────────────────
-  // Uniform step across ±1.0 rad of wrist roll; slight downward flex keeps
-  // the board visible throughout.
-  for (const roll of [-1.0, -0.7, -0.35, 0, 0.35, 0.7, 1.0]) {
+  // Uniform step across ±1.0 rad of wrist roll; downward flex keeps the board
+  // well-centred and improves image coverage.
+  for (const roll of [0, -0.35, 0.35, -0.7, 0.7, -1.0, 1.0]) {
     poses.push(
       makePose([
         [WROLL, roll],
-        [WFLEX, -0.1],
+        [WFLEX, -0.35],
       ]),
     )
   }
@@ -86,12 +86,12 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
   // Three flex levels (strong forward tilt, mild tilt, slight back-tilt),
   // each paired with two opposite rolls so no two poses are mirror-symmetric.
   for (const [flex, roll] of [
-    [-0.4, -0.5],
-    [-0.4, 0.5],
-    [-0.2, -0.7],
-    [-0.2, 0.7],
-    [0.2, -0.5],
-    [0.2, 0.5],
+    [-0.5, -0.5],
+    [-0.5, 0.5],
+    [-0.3, -0.7],
+    [-0.3, 0.7],
+    [0.1, -0.5],
+    [0.1, 0.5],
   ] as Array<[number, number]>) {
     poses.push(
       makePose([
@@ -107,7 +107,7 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
     poses.push(
       makePose([
         [BASE, pan],
-        [WFLEX, -0.1],
+        [WFLEX, -0.35],
       ]),
     )
   }
@@ -153,7 +153,7 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
         makePose([
           [BASE, pan],
           [WROLL, roll],
-          [WFLEX, -0.1],
+          [WFLEX, -0.35],
         ]),
       )
     }
@@ -165,7 +165,7 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
       makePose([
         [SHOULDER, -0.3],
         [ELBOW, -0.3],
-        [WFLEX, -0.15],
+        [WFLEX, -0.25],
       ]),
     )
     poses.push(
@@ -187,25 +187,30 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
     // Steep out-of-plane tilt constrains cx/cy better than mild tilt.
     poses.push(
       makePose([
-        [WFLEX, -0.5],
+        [WFLEX, -0.6],
         [WROLL, 0.0],
       ]),
     )
     poses.push(
       makePose([
         [BASE, -0.2],
-        [WFLEX, -0.35],
+        [WFLEX, -0.45],
         [WROLL, 0.4],
       ]),
     )
     poses.push(
       makePose([
         [BASE, 0.2],
-        [WFLEX, -0.35],
+        [WFLEX, -0.45],
         [WROLL, -0.4],
       ]),
     )
   }
+
+  // Prepend a warmup pose (neutral, no offsets) so the first real capture is
+  // never the very first robot movement. The warmup is hidden from the UI and
+  // its frame is not used for calibration.
+  poses.unshift([...neutral])
 
   return poses
 }
