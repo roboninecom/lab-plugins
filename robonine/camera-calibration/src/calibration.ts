@@ -33,7 +33,12 @@ function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Arr
   try {
     const imgArea = gray.cols * gray.rows
     const allPts: [number, number][] = []
-    const CLUSTER_PX = 10
+    // Cluster radius: large enough to merge the 4 same-corner detections (which
+    // are typically 1–5 px apart after approxPolyDP on straight-sided quads) but
+    // small enough to NOT merge adjacent inner corners at the compressed end of a
+    // perspective-foreshortened board (which can be as close as 8–10 px).
+    // 0.05 × avg-spacing ≈ 6 px at 1280×720; adjacent far corners are ~10 px.
+    const CLUSTER_PX = Math.max(4, Math.round(Math.sqrt(imgArea / n) * 0.05))
     const clusters: { x: number; y: number; count: number }[] = []
 
     cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 1, 1)
@@ -126,9 +131,9 @@ function detectGFTT(cv: CV, gray: CV, cols: number, rows: number): Float32Array 
 
   try {
     const maxCorners = n + cols
-    // Smaller minDist so that corners at the compressed end of a perspective-distorted
-    // board (which can be as close as 10–15 px) are not suppressed by NMS.
-    const minDist = Math.max(5, Math.sqrt((gray.cols * gray.rows) / (n * 36)))
+    // Keep minDist small so compressed far-row corners (as close as 8 px at steep
+    // perspective) are not suppressed by NMS.  Cap at 8 to avoid over-detection.
+    const minDist = Math.max(4, Math.min(8, Math.sqrt((gray.cols * gray.rows) / (n * 100))))
     const pts: { x: number; y: number }[] = []
 
     cv.goodFeaturesToTrack(gray, cornersMat, maxCorners, 0.005, minDist)

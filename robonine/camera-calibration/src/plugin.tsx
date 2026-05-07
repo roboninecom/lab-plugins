@@ -125,6 +125,11 @@ export function PluginRoot({ context }: Props) {
     video.srcObject = selectedCamera?.stream ?? null
 
     if (selectedCamera) {
+      // Request the highest resolution the camera supports. applyConstraints
+      // modifies the existing track in-place — no second stream needed.
+      const track = selectedCamera.stream.getVideoTracks()[0]
+
+      track?.applyConstraints({ width: { ideal: 9999 }, height: { ideal: 9999 } }).catch(() => {})
       video.play().catch(() => {})
     }
   }, [selectedCamera, step])
@@ -207,28 +212,24 @@ export function PluginRoot({ context }: Props) {
     return ctx.getImageData(0, 0, canvas.width, canvas.height)
   }
 
-  function findCorners(cv: CV, imageData: ImageData): { found: boolean; corners: Float32Array; cols: number; rows: number } {
+  function toGray(cv: CV, imageData: ImageData): CV {
     const src = cv.matFromImageData(imageData)
     const gray = new cv.Mat()
 
+    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+    src.delete()
+
+    return gray
+  }
+
+  function findCorners(cv: CV, imageData: ImageData): { found: boolean; corners: Float32Array; cols: number; rows: number } {
+    const gray = toGray(cv, imageData)
+
     try {
-      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY)
+      const corners = detectChessboardCorners(cv, gray, BOARD_COLS, BOARD_ROWS)
 
-      // Try portrait (7×9) then landscape (9×7)
-      for (const [cols, rows] of [
-        [BOARD_COLS, BOARD_ROWS],
-        [BOARD_ROWS, BOARD_COLS],
-      ]) {
-        const corners = detectChessboardCorners(cv, gray, cols, rows)
-
-        if (corners) {
-          return { found: true, corners, cols, rows }
-        }
-      }
-
-      return { found: false, corners: new Float32Array(), cols: BOARD_COLS, rows: BOARD_ROWS }
+      return corners ? { found: true, corners, cols: BOARD_COLS, rows: BOARD_ROWS } : { found: false, corners: new Float32Array(), cols: BOARD_COLS, rows: BOARD_ROWS }
     } finally {
-      src.delete()
       gray.delete()
     }
   }
@@ -266,7 +267,8 @@ export function PluginRoot({ context }: Props) {
     const confirmed = await context.showSafetyWarning()
     const cleanup = context.servo.registerEmergencyStop()
     const imagePointsList: { corners: Float32Array; cols: number; rows: number }[] = []
-    const refFrame = captureFrame()
+    let capturedWidth = 0
+    let capturedHeight = 0
 
     if (!poses || !cv) {
       return
@@ -335,6 +337,10 @@ export function PluginRoot({ context }: Props) {
           const canvas = previewRef.current
 
           imagePointsList.push({ corners, cols, rows })
+          if (!capturedWidth) {
+            capturedWidth = imageData.width
+            capturedHeight = imageData.height
+          }
           setPoseStatuses((prev) => {
             const next = [...prev]
 
@@ -392,13 +398,16 @@ export function PluginRoot({ context }: Props) {
 
     setStep('computing')
 
-    const imageWidth = refFrame?.width ?? 640
-    const imageHeight = refFrame?.height ?? 480
+    const imageWidth = capturedWidth || 640
+    const imageHeight = capturedHeight || 480
 
     try {
       const objPtsVec = new cv.MatVector()
       const imgPtsVec = new cv.MatVector()
       const cameraMatrix = cv.Mat.eye(3, 3, cv.CV_64F)
+
+      // Initialise with a reasonable focal length guess and centred principal point.
+      // Identity (fx=1, cx=0) is a terrible starting point and causes divergence.
       const distCoeffs = cv.Mat.zeros(5, 1, cv.CV_64F)
       const rvecs = new cv.MatVector()
       const tvecs = new cv.MatVector()
@@ -407,6 +416,11 @@ export function PluginRoot({ context }: Props) {
       const perViewErrors = new cv.Mat()
       const imageSize = new cv.Size(imageWidth, imageHeight)
       let rms = 0
+
+      cameraMatrix.data64F[0] = imageWidth // fx ≈ image width
+      cameraMatrix.data64F[4] = imageWidth // fy ≈ image width
+      cameraMatrix.data64F[2] = imageWidth / 2
+      cameraMatrix.data64F[5] = imageHeight / 2
 
       for (const { corners, cols, rows } of imagePointsList) {
         const objPt = buildObjectPoints(cv, cols, rows)
