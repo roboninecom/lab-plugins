@@ -324,19 +324,32 @@ export function PluginRoot({ context }: Props) {
 
       if (service && !poseReading) {
         const calibration = cameraCalibrationRef.current ?? undefined
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const w = canvas.width
+        const h = canvas.height
+        const imageData = ctx.getImageData(0, 0, w, h)
         const sizeCm = markerSizeCmRef.current
         const markerSizeM = sizeCm > 0 ? sizeCm / 100 : undefined
+
+        // Scale intrinsics to actual capture resolution; calibration may be at a different res.
+        const cameraIntrinsics = calibration
+          ? {
+              fx: calibration.fx * (w / calibration.imageWidth),
+              fy: calibration.fy * (h / calibration.imageHeight),
+              cx: calibration.cx * (w / calibration.imageWidth),
+              cy: calibration.cy * (h / calibration.imageHeight),
+              distCoeffs: calibration.distCoeffs,
+            }
+          : undefined
 
         const result = service.detectMarkers(imageData, {
           dictId: selectedDictIdRef.current,
           markerSize: markerSizeM,
           cameraPose: cameraPoseRef.current,
-          cameraIntrinsics: calibration,
+          cameraIntrinsics,
         })
 
         lastResult = result
-        lastIntrinsics = calibration
+        lastIntrinsics = cameraIntrinsics
 
         const nextIds = result.map((d) => d.id).join(',')
 
