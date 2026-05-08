@@ -90,6 +90,7 @@ export const ARUCO_DICTS = {
   '7X7_250': 14,
   '7X7_1000': 15,
   ORIGINAL: 16,
+  ARUCO_MIP_36h12: 21,
 } as const
 
 export type ArucoDictKey = keyof typeof ARUCO_DICTS
