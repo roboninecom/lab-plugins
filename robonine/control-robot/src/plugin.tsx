@@ -170,7 +170,7 @@ export function PluginRoot({ context }: Props) {
         </div>
       </div>
 
-      <div className="space-y-4 lg:w-70 lg:shrink-0">
+      <div className="space-y-4 lg:w-[280px] lg:max-w-[280px] lg:shrink-0">
         {[...joints].reverse().map((j) => (
           <div key={j.name} className="space-y-1">
             <div className="flex justify-between text-sm">
