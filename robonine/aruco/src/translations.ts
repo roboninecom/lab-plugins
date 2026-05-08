@@ -15,6 +15,8 @@ interface Translations {
   noMarkers: string
   local: string
   remote: string
+  worldFrame: string
+  cameraFrame: string
 }
 
 export const translations: Record<string, Translations> = {
@@ -35,6 +37,8 @@ export const translations: Record<string, Translations> = {
     noMarkers: 'No markers in frame',
     local: 'local',
     remote: 'remote',
+    worldFrame: 'relative to base',
+    cameraFrame: 'relative to cam.',
   },
   ru: {
     title: 'Детектор ArUco',
@@ -53,5 +57,7 @@ export const translations: Record<string, Translations> = {
     noMarkers: 'Маркеры в кадре отсутствуют',
     local: 'локальная',
     remote: 'удалённая',
+    worldFrame: 'отн. базы',
+    cameraFrame: 'отн. камеры',
   },
 }

@@ -32,8 +32,8 @@ export interface CameraIntrinsics {
   cx: number
   /** Principal point y (pixels). */
   cy: number
-  /** Distortion coefficients [k1, k2, p1, p2, k3]. Defaults to zeros. */
-  distCoeffs?: [number, number, number, number, number]
+  /** Distortion coefficients. Standard: [k1,k2,p1,p2,k3]. Wide-angle rational: [k1,k2,p1,p2,k3,k4,k5,k6]. Defaults to zeros. */
+  distCoeffs?: number[]
 }
 
 export interface ArucoDetectOptions {
@@ -191,7 +191,7 @@ function runDetection(cv: CV, imageData: ImageData, options: ArucoDetectOptions)
         const dist = cameraIntrinsics?.distCoeffs ?? [0, 0, 0, 0, 0]
 
         camMat = cv.matFromArray(3, 3, cv.CV_64F, [fx, 0, ppx, 0, fy, ppy, 0, 0, 1])
-        distMat = cv.matFromArray(5, 1, cv.CV_64F, dist)
+        distMat = cv.matFromArray(dist.length, 1, cv.CV_64F, dist)
       }
 
       for (let i = 0; i < ids.rows; i++) {
@@ -212,7 +212,7 @@ function runDetection(cv: CV, imageData: ImageData, options: ArucoDetectOptions)
         if (doPose && camMat && distMat && markerSize !== undefined) {
           const half = markerSize / 2
           // Object points: marker corners in marker frame (z=0 plane), top-left clockwise.
-          const objPts = cv.matFromArray(4, 1, cv.CV_64FC3, [-half, half, 0, half, half, 0, half, -half, 0, -half, -half, 0])
+          const objPts = cv.matFromArray(4, 1, cv.CV_64FC3, [-half, -half, 0, half, -half, 0, half, half, 0, -half, half, 0])
           const imgPts = cv.matFromArray(4, 1, cv.CV_64FC2, [c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]])
           const rvec = new cv.Mat()
           const tvec = new cv.Mat()

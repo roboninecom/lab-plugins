@@ -1,5 +1,5 @@
+import type { CameraCalibrationData, CameraHandle, FKResult, PluginContext } from '@robonine/plugin-sdk'
 import { type ArucoDetection, ARUCO_DICTS, type ArucoService, type ArucoDictKey } from './service'
-import type { CameraHandle, FKResult, PluginContext } from '@robonine/plugin-sdk'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
 
@@ -9,7 +9,19 @@ interface Props {
 
 // ── Pure canvas helpers ────────────────────────────────────────────────
 
-function drawAxes(ctx: CanvasRenderingContext2D, rvec: [number, number, number], tvec: [number, number, number], axisLength: number, fx: number, fy: number, ppx: number, ppy: number) {
+function drawAxes(
+  ctx: CanvasRenderingContext2D,
+  rvec: [number, number, number],
+  tvec: [number, number, number],
+  axisLength: number,
+  fx: number,
+  fy: number,
+  ppx: number,
+  ppy: number,
+  anchorX: number,
+  anchorY: number,
+  distCoeffs?: number[],
+) {
   const [rx, ry, rz] = rvec
   let r00 = 1
   let r01 = 0
@@ -20,7 +32,7 @@ function drawAxes(ctx: CanvasRenderingContext2D, rvec: [number, number, number],
   let r20 = 0
   let r21 = 0
   let r22 = 1
-  const origin = project(0, 0, 0)
+  const projOrigin = project(0, 0, 0)
 
   const axes: Array<[number, number, number, string, string]> = [
     [axisLength, 0, 0, '#ef4444', 'X'],
@@ -53,7 +65,7 @@ function drawAxes(ctx: CanvasRenderingContext2D, rvec: [number, number, number],
     r22 = t * uz * uz + c
   }
 
-  // Project a marker-frame point to canvas pixels
+  // Project a marker-frame point to canvas pixels using the same model as solvePnP.
   function project(px: number, py: number, pz: number): [number, number] | null {
     const X = r00 * px + r01 * py + r02 * pz + tvec[0]
     const Y = r10 * px + r11 * py + r12 * pz + tvec[1]
@@ -63,10 +75,34 @@ function drawAxes(ctx: CanvasRenderingContext2D, rvec: [number, number, number],
       return null
     }
 
-    return [fx * (X / Z) + ppx, fy * (Y / Z) + ppy]
+    const xp = X / Z
+    const yp = Y / Z
+
+    if (distCoeffs && distCoeffs.length >= 4) {
+      const k1 = distCoeffs[0] ?? 0
+      const k2 = distCoeffs[1] ?? 0
+      const p1 = distCoeffs[2] ?? 0
+      const p2 = distCoeffs[3] ?? 0
+      const k3 = distCoeffs[4] ?? 0
+      const k4 = distCoeffs[5] ?? 0
+      const k5 = distCoeffs[6] ?? 0
+      const k6 = distCoeffs[7] ?? 0
+      const r2 = xp * xp + yp * yp
+      const r4 = r2 * r2
+      const r6 = r4 * r2
+      const num = 1 + k1 * r2 + k2 * r4 + k3 * r6
+      const den = 1 + k4 * r2 + k5 * r4 + k6 * r6
+      const radial = num / den
+      const xpp = xp * radial + 2 * p1 * xp * yp + p2 * (r2 + 2 * xp * xp)
+      const ypp = yp * radial + p1 * (r2 + 2 * yp * yp) + 2 * p2 * xp * yp
+
+      return [fx * xpp + ppx, fy * ypp + ppy]
+    }
+
+    return [fx * xp + ppx, fy * yp + ppy]
   }
 
-  if (!origin) {
+  if (!projOrigin) {
     return
   }
 
@@ -74,41 +110,50 @@ function drawAxes(ctx: CanvasRenderingContext2D, rvec: [number, number, number],
   ctx.lineWidth = 3
 
   for (const [px, py, pz, color, label] of axes) {
-    const tip = project(px, py, pz)
+    const projTip = project(px, py, pz)
 
-    if (!tip) {
+    if (!projTip) {
       continue
     }
 
+    // Draw relative to anchor so distorted calibration doesn't shift axes off the badge.
+    const tipX = anchorX + (projTip[0] - projOrigin[0])
+    const tipY = anchorY + (projTip[1] - projOrigin[1])
+
     ctx.beginPath()
-    ctx.moveTo(origin[0], origin[1])
-    ctx.lineTo(tip[0], tip[1])
+    ctx.moveTo(anchorX, anchorY)
+    ctx.lineTo(tipX, tipY)
     ctx.strokeStyle = color
     ctx.stroke()
 
-    // Dot at tip
     ctx.beginPath()
-    ctx.arc(tip[0], tip[1], 4, 0, Math.PI * 2)
+    ctx.arc(tipX, tipY, 4, 0, Math.PI * 2)
     ctx.fillStyle = color
     ctx.fill()
 
-    // Label
     ctx.font = 'bold 13px monospace'
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     ctx.fillStyle = color
-    ctx.fillText(label, tip[0], tip[1] - 10)
+    ctx.fillText(label, tipX, tipY - 10)
   }
 
   ctx.restore()
 }
 
-function drawOverlay(ctx: CanvasRenderingContext2D, detections: ArucoDetection[], w: number, h: number, markerSizeM: number) {
-  // Approximate intrinsics — must match the values used in detectMarkers
-  const fx = 0.8 * Math.max(w, h)
-  const fy = fx
-  const ppx = w / 2
-  const ppy = h / 2
+function drawOverlay(
+  ctx: CanvasRenderingContext2D,
+  detections: ArucoDetection[],
+  w: number,
+  h: number,
+  markerSizeM: number,
+  intrinsics?: { fx: number; fy: number; cx: number; cy: number; distCoeffs?: number[] },
+) {
+  const fx = intrinsics?.fx ?? 0.8 * Math.max(w, h)
+  const fy = intrinsics?.fy ?? fx
+  const ppx = intrinsics?.cx ?? w / 2
+  const ppy = intrinsics?.cy ?? h / 2
+  const distCoeffs = intrinsics?.distCoeffs
 
   for (const { id, corners, pose } of detections) {
     const cx = (corners[0][0] + corners[1][0] + corners[2][0] + corners[3][0]) / 4
@@ -128,7 +173,7 @@ function drawOverlay(ctx: CanvasRenderingContext2D, detections: ArucoDetection[]
     ctx.stroke()
 
     if (pose) {
-      drawAxes(ctx, pose.rvec, pose.tvec, markerSizeM, fx, fy, ppx, ppy)
+      drawAxes(ctx, pose.rvec, pose.tvec, markerSizeM, fx, fy, ppx, ppy, cx, cy, distCoeffs)
     }
 
     ctx.font = 'bold 18px monospace'
@@ -169,6 +214,7 @@ export function PluginRoot({ context }: Props) {
   const selectedDictIdRef = useRef(selectedDictId)
   const markerSizeCmRef = useRef(markerSizeCm)
   const cameraPoseRef = useRef<FKResult | undefined>(undefined)
+  const cameraCalibrationRef = useRef<CameraCalibrationData | null>(null)
   const contextRef = useRef(context)
   const tRef = useRef(t)
 
@@ -179,6 +225,9 @@ export function PluginRoot({ context }: Props) {
   markerSizeCmRef.current = markerSizeCm
   contextRef.current = context
   tRef.current = t
+  if (context.cameraCalibration !== null) {
+    cameraCalibrationRef.current = context.cameraCalibration
+  }
 
   const selectedCamera = useMemo<CameraHandle | null>(() => context.cameras.find((c) => c.id === selectedCameraId) ?? null, [context.cameras, selectedCameraId])
 
@@ -201,42 +250,6 @@ export function PluginRoot({ context }: Props) {
     }
   }, [context.cameras, selectedCameraId])
 
-  // Poll joint positions at ~10 Hz and keep cameraPoseRef up to date.
-  useEffect(() => {
-    let active = true
-
-    const poll = async () => {
-      while (active) {
-        const ctx = contextRef.current
-
-        try {
-          const positions = await ctx.servo.readJointPositions()
-
-          if (positions && ctx.robotConfig) {
-            const entries = Object.entries(ctx.robotConfig.jointServoId).sort((a, b) => a[1] - b[1])
-            const angles = Object.fromEntries(entries.map(([name], i) => [name, positions[i] ?? 0]))
-
-            cameraPoseRef.current = await ctx.kinematics.forwardKinematics(angles, 'camera_virtual')
-          } else {
-            cameraPoseRef.current = undefined
-          }
-        } catch {
-          cameraPoseRef.current = undefined
-        }
-
-        await new Promise<void>((resolve) => {
-          setTimeout(resolve, 100)
-        })
-      }
-    }
-
-    poll()
-
-    return () => {
-      active = false
-    }
-  }, [])
-
   // Bind camera stream to the hidden video element.
   useEffect(() => {
     const video = videoRef.current
@@ -258,9 +271,10 @@ export function PluginRoot({ context }: Props) {
     const canvas = canvasRef.current
     let animId: number
     let running = true
-    let frameCount = 0
     let lastIds = ''
     let lastResult: ArucoDetection[] = []
+    let lastIntrinsics: { fx: number; fy: number; cx: number; cy: number; distCoeffs?: number[] } | undefined = undefined
+    let poseReading = false
 
     if (!video || !canvas) {
       return () => {}
@@ -274,6 +288,8 @@ export function PluginRoot({ context }: Props) {
 
     const loop = () => {
       const service = arucoServiceRef.current
+      const cp = cameraPoseRef.current
+      const robotConnected = contextRef.current.connection.connected
 
       if (!running) {
         return
@@ -293,7 +309,6 @@ export function PluginRoot({ context }: Props) {
       ctx.drawImage(video, 0, 0)
 
       if (!arucoReadyRef.current) {
-        // Overlay a status message on the raw video frame.
         const msg = arucoErrorRef.current ? tRef.current.statusError : tRef.current.statusLoading
 
         ctx.fillStyle = 'rgba(0,0,0,0.5)'
@@ -307,16 +322,21 @@ export function PluginRoot({ context }: Props) {
         return
       }
 
-      // Detect every other frame to reduce CPU load.
-      // getImageData runs before drawOverlay so detection sees clean video pixels.
-      frameCount++
-      if (frameCount % 2 === 0 && service) {
+      if (service && !poseReading) {
+        const calibration = cameraCalibrationRef.current ?? undefined
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
         const sizeCm = markerSizeCmRef.current
         const markerSizeM = sizeCm > 0 ? sizeCm / 100 : undefined
-        const result = service.detectMarkers(imageData, { dictId: selectedDictIdRef.current, markerSize: markerSizeM, cameraPose: cameraPoseRef.current })
+
+        const result = service.detectMarkers(imageData, {
+          dictId: selectedDictIdRef.current,
+          markerSize: markerSizeM,
+          cameraPose: cameraPoseRef.current,
+          cameraIntrinsics: calibration,
+        })
 
         lastResult = result
+        lastIntrinsics = calibration
 
         const nextIds = result.map((d) => d.id).join(',')
 
@@ -326,16 +346,78 @@ export function PluginRoot({ context }: Props) {
         }
       }
 
-      // Always redraw the last known detections — drawImage clears the canvas
-      // every frame, so skipping this on non-detection frames makes the overlay flicker.
-      drawOverlay(ctx, lastResult, canvas.width, canvas.height, markerSizeCmRef.current / 100)
+      drawOverlay(ctx, lastResult, canvas.width, canvas.height, markerSizeCmRef.current / 100, lastIntrinsics)
+
+      if (robotConnected) {
+        const lines = cp ? [`cam x: ${cp.position[0].toFixed(3)} m`, `cam y: ${cp.position[1].toFixed(3)} m`, `cam z: ${cp.position[2].toFixed(3)} m`] : ['cam: —']
+
+        ctx.save()
+        ctx.font = '12px monospace'
+        ctx.textAlign = 'left'
+        ctx.textBaseline = 'top'
+
+        const boxH = lines.length * 16 + 3
+
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'
+        ctx.fillRect(8, 8, 120, boxH)
+        ctx.fillStyle = cp ? '#4ade80' : '#94a3b8'
+
+        for (let i = 0; i < lines.length; i++) {
+          ctx.fillText(lines[i], 14, 12 + i * 16)
+        }
+
+        ctx.restore()
+      }
     }
 
     animId = requestAnimationFrame(loop)
 
+    const poseInterval = setInterval(() => {
+      const pluginCtx = contextRef.current
+
+      if (poseReading || !pluginCtx.robotConfig) {
+        return
+      }
+
+      running = false
+      cancelAnimationFrame(animId)
+      poseReading = true
+
+      const { jointServoId, servoNeutral, encoderToJoint } = pluginCtx.robotConfig
+
+      // Read each servo individually so a missing servo doesn't abort the whole
+      // read — fall back to its neutral encoder position instead.
+      ;(async () => {
+        const entries = Object.entries(jointServoId).sort((a, b) => a[1] - b[1])
+        const angles: Record<string, number> = {}
+
+        for (const [jointName, servoId] of entries) {
+          try {
+            const raw = await pluginCtx.servo.readPosition(servoId)
+
+            angles[jointName] = encoderToJoint(servoId, raw)
+          } catch {
+            angles[jointName] = encoderToJoint(servoId, servoNeutral[servoId] ?? 2048)
+          }
+        }
+
+        return pluginCtx.kinematics.forwardKinematics(angles, 'camera_virtual')
+      })()
+        .then((pose) => {
+          cameraPoseRef.current = pose
+        })
+        .catch(() => {})
+        .finally(() => {
+          poseReading = false
+          running = true
+          animId = requestAnimationFrame(loop)
+        })
+    }, 1000)
+
     return () => {
       running = false
       cancelAnimationFrame(animId)
+      clearInterval(poseInterval)
     }
   }, [])
 
@@ -454,15 +536,31 @@ export function PluginRoot({ context }: Props) {
                 {detections.map(({ id, pose }) => (
                   <div key={id} className="rounded-md border bg-card px-3 py-2">
                     <span className="text-xs font-mono font-semibold text-green-600 dark:text-green-400">#{id}</span>
+                    {pose && (
+                      <>
+                        <p className="text-[10px] text-muted-foreground mt-1">{t.cameraFrame}</p>
+                        <div className="grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
+                          <span>x</span>
+                          <span>{pose.tvec[0].toFixed(3)} m</span>
+                          <span>y</span>
+                          <span>{pose.tvec[1].toFixed(3)} m</span>
+                          <span>z</span>
+                          <span>{pose.tvec[2].toFixed(3)} m</span>
+                        </div>
+                      </>
+                    )}
                     {pose?.worldPosition && (
-                      <div className="mt-1 grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
-                        <span>x</span>
-                        <span>{pose.worldPosition[0].toFixed(3)} m</span>
-                        <span>y</span>
-                        <span>{pose.worldPosition[1].toFixed(3)} m</span>
-                        <span>z</span>
-                        <span>{pose.worldPosition[2].toFixed(3)} m</span>
-                      </div>
+                      <>
+                        <p className="text-[10px] text-muted-foreground mt-1">{t.worldFrame}</p>
+                        <div className="grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
+                          <span>x</span>
+                          <span>{pose.worldPosition[0].toFixed(3)} m</span>
+                          <span>y</span>
+                          <span>{pose.worldPosition[1].toFixed(3)} m</span>
+                          <span>z</span>
+                          <span>{pose.worldPosition[2].toFixed(3)} m</span>
+                        </div>
+                      </>
                     )}
                   </div>
                 ))}
