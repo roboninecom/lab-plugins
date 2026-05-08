@@ -9,6 +9,8 @@ export const translations = {
     connectRobot: 'Connect robot',
     liveDescription: 'Use the sliders to move each joint. Press "Go home" to return the arm to its neutral position.',
     goHome: 'Go home',
+    node: 'Node',
+    computePosition: 'Compute position',
   },
   ru: {
     title: 'Управление роботом',
@@ -20,5 +22,7 @@ export const translations = {
     connectRobot: 'Подключить робота',
     liveDescription: 'Используйте ползунки для перемещения каждого сустава. Нажмите «Домой», чтобы вернуть руку в нейтральное положение.',
     goHome: 'Домой',
+    node: 'Узел',
+    computePosition: 'Вычислить позицию',
   },
 } satisfies Record<string, Record<string, string>>

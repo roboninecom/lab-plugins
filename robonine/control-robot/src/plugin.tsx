@@ -12,8 +12,11 @@ export function PluginRoot({ context }: Props) {
   const jointsRef = useRef<JointInfo[]>([])
   const [joints, setJoints] = useState<JointInfo[]>([])
   const [values, setValues] = useState<Record<string, number>>({})
+  const [selectedNode, setSelectedNode] = useState<string>('')
+  const [fkResult, setFkResult] = useState<{ node: string; label: string; x: number; y: number; z: number } | null>(null)
   const isDraggingRef = useRef(false)
   const safetyShownRef = useRef(false)
+  const extraNodes = useMemo(() => (context.robotConfig?.fkNodes ?? []).map((n) => ({ name: n.linkName, label: context.localize(n.label) })), [context.robotConfig?.fkNodes, context.locale])
 
   useEffect(() => {
     if (context.connection.connected && !safetyShownRef.current) {
@@ -33,6 +36,7 @@ export function PluginRoot({ context }: Props) {
 
       jointsRef.current = loadedJoints
       setJoints(loadedJoints)
+      setSelectedNode(loadedJoints[loadedJoints.length - 1]?.name ?? '')
 
       for (const joint of loadedJoints) {
         const servoId = config?.jointServoId[joint.name]
@@ -63,6 +67,40 @@ export function PluginRoot({ context }: Props) {
 
       void context.servo.setPosition(servoId, Math.max(0, Math.min(4095, raw)))
     }
+  }
+
+  const handleComputePosition = async () => {
+    const allNodes = [...jointsRef.current, ...extraNodes]
+    let x: number
+    let y: number
+    let z: number
+
+    if (!selectedNode) {
+      return
+    }
+
+    if (extraNodes.some((n) => n.name === selectedNode)) {
+      const result = await context.kinematics.forwardKinematics(values, selectedNode)
+
+      ;[x, y, z] = result.position
+    } else {
+      const pos = viewRef.current.getJointWorldPosition(selectedNode)
+
+      if (!viewRef.current) {
+        return
+      }
+
+      if (!pos) {
+        return
+      }
+      x = pos.x
+      y = pos.y
+      z = pos.z
+    }
+
+    const label = allNodes.find((n) => n.name === selectedNode)?.label ?? selectedNode
+
+    setFkResult({ node: selectedNode, label, x, y, z })
   }
 
   const handleHome = () => {
@@ -160,9 +198,47 @@ export function PluginRoot({ context }: Props) {
         ))}
 
         {joints.length > 0 && (
-          <context.ui.Button variant="outline" className="w-full" onClick={handleHome}>
-            {t.goHome}
-          </context.ui.Button>
+          <>
+            <context.ui.Button variant="outline" className="w-full" onClick={handleHome}>
+              {t.goHome}
+            </context.ui.Button>
+
+            <div className="space-y-1.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.node}</p>
+              <select
+                value={selectedNode}
+                onChange={(e) => {
+                  setSelectedNode(e.target.value)
+                  setFkResult(null)
+                }}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {joints.map((j) => (
+                  <option key={j.name} value={j.name}>
+                    {j.label}
+                  </option>
+                ))}
+                {extraNodes.map((n) => (
+                  <option key={n.name} value={n.name}>
+                    {n.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <context.ui.Button variant="outline" className="w-full" onClick={() => void handleComputePosition()} disabled={!selectedNode}>
+              {t.computePosition}
+            </context.ui.Button>
+
+            {fkResult && (
+              <div className="rounded-md border bg-muted/50 p-3 text-sm font-mono space-y-0.5">
+                <p className="text-xs font-sans font-semibold text-muted-foreground mb-1.5">{fkResult.label}</p>
+                <p>x: {(fkResult.x * 1000).toFixed(1)} mm</p>
+                <p>y: {(fkResult.y * 1000).toFixed(1)} mm</p>
+                <p>z: {(fkResult.z * 1000).toFixed(1)} mm</p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
