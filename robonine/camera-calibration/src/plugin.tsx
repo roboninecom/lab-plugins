@@ -521,7 +521,7 @@ export function PluginRoot({ context }: Props) {
           const distCoeffs = Array.from(dist.data64F.slice(0, 8))
 
           console.log(`[calib] wide-angle RMS=${rms.toFixed(3)}`)
-          setCalibResult({ model: 'wide-angle', fisheye: false, fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: rms, capturedAt: new Date().toISOString() })
+          setCalibResult({ model: 'wide-angle', fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: rms, capturedAt: new Date().toISOString() })
           setStep('result')
         } finally {
           objPtsVec.delete()
@@ -622,7 +622,7 @@ export function PluginRoot({ context }: Props) {
         pass2.cam.delete()
         pass2.dist.delete()
 
-        setCalibResult({ model: 'standard', fisheye: false, fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: pass2.rms, capturedAt: new Date().toISOString() })
+        setCalibResult({ model: 'standard', fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: pass2.rms, capturedAt: new Date().toISOString() })
         setStep('result')
       }
     } catch (err) {
@@ -640,18 +640,9 @@ export function PluginRoot({ context }: Props) {
     }
 
     try {
-      const listRes = await context.apiFetch('/api/robot/my')
-      const { data: robots } = await listRes.json()
-      const robot = (robots as Array<{ id: string; calibration: Record<string, unknown> }>).find((r) => r.id === robotId)
-      const existing = robot?.calibration ?? { version: 1, motors: {} }
-      const merged = { ...existing, camera: calibResult }
       const svc = context.service('camera-calibration') as CameraCalibrationService | null
 
-      await context.apiFetch(`/api/robot/my/${robotId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ calibration: merged }),
-      })
+      await context.saveCameraCalibration(calibResult)
 
       svc?.setCalibration(calibResult)
       setStep('saved')

@@ -1,15 +1,12 @@
 import type { PluginServiceFactory } from '@robonine/plugin-sdk'
 
 export interface CameraCalibration {
-  /** Explicit calibration model. Absent on records saved before this field was added. */
-  model?: 'standard' | 'wide-angle' | 'fisheye'
-  /** Legacy flag kept for backward compat; prefer `model`. */
-  fisheye: boolean
+  model: 'standard' | 'wide-angle'
   fx: number
   fy: number
   cx: number
   cy: number
-  /** Fisheye: [k1, k2, k3, k4]. Standard: [k1, k2, p1, p2, k3]. */
+  /** Wide-angle: [k1, k2, p1, p2, k3, k4, k5, k6]. Standard: [k1, k2, p1, p2, k3]. */
   distCoeffs: number[]
   imageWidth: number
   imageHeight: number
