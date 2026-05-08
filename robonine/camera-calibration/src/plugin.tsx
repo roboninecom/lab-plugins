@@ -14,7 +14,7 @@ interface OpenCVHandle {
   getCv(): unknown
 }
 
-type WizardStep = 'idle' | 'setup' | 'confirm' | 'capturing' | 'result' | 'saved'
+type WizardStep = 'idle' | 'setup' | 'confirm' | 'capturing' | 'computing' | 'result' | 'saved'
 type PoseStatus = 'pending' | 'moving' | 'captured' | 'missed'
 
 // ChArUco board: 8 squares × 5 squares with a nominal 35 mm square. The printed
@@ -473,6 +473,10 @@ export function PluginRoot({ context }: Props) {
     const imageWidth = capturedWidth || 640
     const imageHeight = capturedHeight || 480
 
+    setStep('computing')
+    // Yield so React can paint the computing screen before WASM blocks the thread
+    await new Promise<void>((resolve) => setTimeout(resolve, 50))
+
     try {
       const imageSize = new cv.Size(imageWidth, imageHeight)
 
@@ -882,6 +886,19 @@ export function PluginRoot({ context }: Props) {
           >
             {t.cancelButton}
           </Button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Computing step ───────────────────────────────────────────────────
+
+  if (step === 'computing') {
+    return (
+      <div className="flex flex-1 items-center justify-center">
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto" />
+          <h2 className="text-lg font-semibold">{t.computingTitle}</h2>
         </div>
       </div>
     )
