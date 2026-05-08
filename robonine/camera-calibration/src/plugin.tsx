@@ -1,7 +1,8 @@
+import { createCharucoBoard, destroyCharucoBoard, detectCharucoCorners, isCharucoSupported, objectPointsForIds } from './calibration'
 import type { CameraCalibration, CameraCalibrationService } from './service'
+import type { CharucoBoardConfig, CharucoBoardHandle } from './calibration'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CameraHandle, PluginContext } from '@robonine/plugin-sdk'
-import { detectChessboardCorners } from './calibration'
 import { generateCalibrationPoses } from './poses'
 import { translations } from './translations'
 
@@ -13,29 +14,25 @@ interface OpenCVHandle {
   getCv(): unknown
 }
 
-type WizardStep = 'idle' | 'setup' | 'confirm' | 'capturing' | 'computing' | 'result' | 'saved'
+type WizardStep = 'idle' | 'setup' | 'confirm' | 'capturing' | 'result' | 'saved'
 type PoseStatus = 'pending' | 'moving' | 'captured' | 'missed'
 
-const BOARD_COLS = 7
-const BOARD_ROWS = 9
-const SQUARE_SIZE_M = 0.02
-const MIN_CAPTURES = 15
+// ChArUco board: 8 squares × 5 squares with a nominal 35 mm square. The printed
+// PDF includes a 50 mm reference bar; the user measures it after printing and
+// we scale the nominal square size by the printer's actual scale factor.
+const BOARD_GEOMETRY = { squaresX: 8, squaresY: 5 }
+const NOMINAL_SQUARE_MM = 35
+const NOMINAL_SAMPLE_MM = 50
+// Marker length is always 0.7 × square length on this generator.
+const MARKER_RATIO = 0.7
+// OpenCV predefined dictionary id matching the printed board (DICT_ARUCO_MIP_36h12).
+const DICT_ID = 21
+const MIN_CORNERS_PER_VIEW = 8
+const MIN_CAPTURES = 10
 const SETTLE_MS = 2000
 
 interface Props {
   context: PluginContext
-}
-
-function buildObjectPoints(cv: CV, cols: number, rows: number) {
-  const pts: number[] = []
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      pts.push(c * SQUARE_SIZE_M, r * SQUARE_SIZE_M, 0)
-    }
-  }
-
-  return cv.matFromArray(cols * rows, 1, cv.CV_32FC3, pts)
 }
 
 function drawCorners(canvas: HTMLCanvasElement, corners: ArrayLike<number>, n: number, found: boolean) {
@@ -67,7 +64,21 @@ export function PluginRoot({ context }: Props) {
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [detectResult, setDetectResult] = useState<'none' | 'found' | 'notfound'>('none')
   const [poseStatuses, setPoseStatuses] = useState<PoseStatus[]>([])
-  const [poseScale, setPoseScale] = useState(1.0)
+  const [poseScale, setPoseScale] = useState(0.5)
+  const [lensType, setLensType] = useState<'standard' | 'wide-angle'>('wide-angle')
+  const [sampleMm, setSampleMm] = useState<number>(NOMINAL_SAMPLE_MM)
+
+  const boardCfg = useMemo<CharucoBoardConfig>(() => {
+    const squareMm = (NOMINAL_SQUARE_MM * sampleMm) / NOMINAL_SAMPLE_MM
+
+    return {
+      ...BOARD_GEOMETRY,
+      squareLength: squareMm / 1000,
+      markerLength: (squareMm * MARKER_RATIO) / 1000,
+      dictId: DICT_ID,
+    }
+  }, [sampleMm])
+
   const [calibResult, setCalibResult] = useState<CameraCalibration | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -222,13 +233,17 @@ export function PluginRoot({ context }: Props) {
     return gray
   }
 
-  function findCorners(cv: CV, imageData: ImageData): { found: boolean; corners: Float32Array; cols: number; rows: number } {
+  function findCorners(cv: CV, imageData: ImageData, board: CharucoBoardHandle): { found: boolean; corners: Float32Array; ids: Int32Array } {
     const gray = toGray(cv, imageData)
 
     try {
-      const result = detectChessboardCorners(cv, gray, BOARD_COLS, BOARD_ROWS)
+      const result = detectCharucoCorners(cv, gray, board, MIN_CORNERS_PER_VIEW)
 
-      return result ? { found: true, ...result } : { found: false, corners: new Float32Array(), cols: BOARD_COLS, rows: BOARD_ROWS }
+      if (!result) {
+        return { found: false, corners: new Float32Array(), ids: new Int32Array() }
+      }
+
+      return { found: true, ...result }
     } finally {
       gray.delete()
     }
@@ -240,25 +255,45 @@ export function PluginRoot({ context }: Props) {
     const cv = opencvSvc?.getCv() as CV | undefined
     const imageData = captureFrame()
 
-    if (!cv || !imageData) {
+    if (!cv) {
+      console.error('[camera-calib] handleDetect: OpenCV not ready')
       setDetectResult('notfound')
 
       return
     }
 
+    if (!imageData) {
+      console.error('[camera-calib] handleDetect: captureFrame returned null — video not streaming?')
+      setDetectResult('notfound')
+
+      return
+    }
+
+    if (!isCharucoSupported(cv)) {
+      console.error('[camera-calib] handleDetect: isCharucoSupported=false — aruco_CharucoBoard:', typeof cv.aruco_CharucoBoard, 'aruco_CharucoDetector:', typeof cv.aruco_CharucoDetector)
+      setDetectResult('notfound')
+
+      return
+    }
+
+    const board = createCharucoBoard(cv, boardCfg)
+
     try {
-      const { found, corners, cols, rows } = findCorners(cv, imageData)
+      const { found, corners, ids } = findCorners(cv, imageData, board)
       const canvas = previewRef.current
 
       setDetectResult(found ? 'found' : 'notfound')
 
       if (canvas && found) {
-        drawCorners(canvas, corners, cols * rows, true)
+        drawCorners(canvas, corners, ids.length, true)
       }
-    } catch {
+    } catch (err) {
+      console.error('[camera-calib] handleDetect: detection threw', err)
       setDetectResult('notfound')
+    } finally {
+      destroyCharucoBoard(board)
     }
-  }, [opencvSvc, selectedCamera])
+  }, [boardCfg, opencvSvc, selectedCamera])
 
   // ── Capture loop ──────────────────────────────────────────────────────
 
@@ -266,11 +301,19 @@ export function PluginRoot({ context }: Props) {
     const cv = opencvSvc?.getCv() as CV | undefined
     const confirmed = await context.showSafetyWarning()
     const cleanup = context.servo.registerEmergencyStop()
-    const imagePointsList: { corners: Float32Array; cols: number; rows: number }[] = []
+    const imagePointsList: { corners: Float32Array; ids: Int32Array }[] = []
     let capturedWidth = 0
     let capturedHeight = 0
 
     if (!poses || !cv) {
+      return
+    }
+
+    if (!isCharucoSupported(cv)) {
+      cleanup()
+      setErrorMsg(t.charucoNotSupported)
+      setStep('idle')
+
       return
     }
 
@@ -279,6 +322,8 @@ export function PluginRoot({ context }: Props) {
 
       return
     }
+
+    const board = createCharucoBoard(cv, boardCfg)
 
     cancelRef.current = false
     setPoseStatuses(poses.map(() => 'pending' as PoseStatus))
@@ -338,7 +383,7 @@ export function PluginRoot({ context }: Props) {
       }
 
       try {
-        let result = findCorners(cv, imageData)
+        let result = findCorners(cv, imageData, board)
         let finalData = imageData
 
         if (!result.found) {
@@ -349,7 +394,7 @@ export function PluginRoot({ context }: Props) {
           const retryData = captureFrame()
 
           if (retryData) {
-            const retryResult = findCorners(cv, retryData)
+            const retryResult = findCorners(cv, retryData, board)
 
             if (retryResult.found) {
               result = retryResult
@@ -358,12 +403,13 @@ export function PluginRoot({ context }: Props) {
           }
         }
 
-        const { found, corners, cols, rows } = result
+        const { found, corners, ids } = result
 
         if (found) {
           const canvas = previewRef.current
 
-          imagePointsList.push({ corners, cols, rows })
+          console.log(`[capture ${imagePointsList.length}] pose=${i} corners=${ids.length}`)
+          imagePointsList.push({ corners, ids })
           if (!capturedWidth) {
             capturedWidth = finalData.width
             capturedHeight = finalData.height
@@ -385,7 +431,7 @@ export function PluginRoot({ context }: Props) {
                 canvas.height = finalData.height
               }
               ctx2d.putImageData(finalData, 0, 0)
-              drawCorners(canvas, corners, cols * rows, true)
+              drawCorners(canvas, corners, ids.length, true)
             }
           }
         } else {
@@ -409,6 +455,7 @@ export function PluginRoot({ context }: Props) {
     }
 
     cleanup()
+    destroyCharucoBoard(board)
 
     if (cancelRef.current) {
       setStep('idle')
@@ -423,91 +470,163 @@ export function PluginRoot({ context }: Props) {
       return
     }
 
-    // Yield so the final pose status (captured/missed) renders while step is still 'capturing'
-    await new Promise<void>((resolve) => setTimeout(resolve, 50))
-    setStep('computing')
-    // Yield so the computing spinner renders before blocking WASM computation
-    await new Promise<void>((resolve) => setTimeout(resolve, 50))
-
     const imageWidth = capturedWidth || 640
     const imageHeight = capturedHeight || 480
 
     try {
-      const objPtsVec = new cv.MatVector()
-      const imgPtsVec = new cv.MatVector()
-      const cameraMatrix = cv.Mat.eye(3, 3, cv.CV_64F)
-
-      // Initialise with a reasonable focal length guess and centred principal point.
-      // Identity (fx=1, cx=0) is a terrible starting point and causes divergence.
-      const distCoeffs = cv.Mat.zeros(5, 1, cv.CV_64F)
-      const rvecs = new cv.MatVector()
-      const tvecs = new cv.MatVector()
-      const stdDevIntrinsics = new cv.Mat()
-      const stdDevExtrinsics = new cv.Mat()
-      const perViewErrors = new cv.Mat()
       const imageSize = new cv.Size(imageWidth, imageHeight)
-      let rms = 0
 
-      cameraMatrix.data64F[0] = imageWidth // fx ≈ image width
-      cameraMatrix.data64F[4] = imageWidth // fy ≈ image width
-      cameraMatrix.data64F[2] = imageWidth / 2
-      cameraMatrix.data64F[5] = imageHeight / 2
+      console.log(`[calib] ${imagePointsList.length} captures, imageSize=${imageWidth}×${imageHeight}, mode=${lensType}`)
 
-      for (const { corners, cols, rows } of imagePointsList) {
-        const objPt = buildObjectPoints(cv, cols, rows)
-        const imgPt = cv.matFromArray(cols * rows, 1, cv.CV_32FC2, corners)
+      if (lensType === 'wide-angle') {
+        // Rational model — adds k4, k5, k6 to the standard polynomial.
+        // Suitable for cameras with FOV up to ~120°.
+        // CALIB_RATIONAL_MODEL = 16384
+        const CALIB_FLAGS = 16384
+        const objPtsVec = new cv.MatVector()
+        const imgPtsVec = new cv.MatVector()
+        const cam = cv.Mat.eye(3, 3, cv.CV_64F)
+        const dist = cv.Mat.zeros(8, 1, cv.CV_64F)
+        const rvecs = new cv.MatVector()
+        const tvecs = new cv.MatVector()
+        const stdI = new cv.Mat()
+        const stdE = new cv.Mat()
+        const pve = new cv.Mat()
 
-        objPtsVec.push_back(objPt)
-        objPt.delete()
-        imgPtsVec.push_back(imgPt)
-        imgPt.delete()
+        cam.data64F[0] = imageWidth
+        cam.data64F[4] = imageWidth
+        cam.data64F[2] = imageWidth / 2
+        cam.data64F[5] = imageHeight / 2
+
+        for (const { corners, ids } of imagePointsList) {
+          const op = objectPointsForIds(cv, ids, boardCfg)
+          const ip = cv.matFromArray(ids.length, 1, cv.CV_32FC2, corners)
+
+          objPtsVec.push_back(op)
+          op.delete()
+          imgPtsVec.push_back(ip)
+          ip.delete()
+        }
+
+        try {
+          const rms = cv.calibrateCameraExtended(objPtsVec, imgPtsVec, imageSize, cam, dist, rvecs, tvecs, stdI, stdE, pve, CALIB_FLAGS)
+          const fx = cam.data64F[0]
+          const fy = cam.data64F[4]
+          const cx = cam.data64F[2]
+          const cy = cam.data64F[5]
+          const distCoeffs = Array.from(dist.data64F.slice(0, 8))
+
+          console.log(`[calib] wide-angle RMS=${rms.toFixed(3)}`)
+          setCalibResult({ model: 'wide-angle', fisheye: false, fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: rms, capturedAt: new Date().toISOString() })
+          setStep('result')
+        } finally {
+          objPtsVec.delete()
+          imgPtsVec.delete()
+          cam.delete()
+          dist.delete()
+          rvecs.delete()
+          tvecs.delete()
+          stdI.delete()
+          stdE.delete()
+          pve.delete()
+        }
+      } else {
+        // Standard pinhole — two-pass with outlier rejection.
+        const CALIB_FLAGS = 0
+
+        const runCalib = (list: typeof imagePointsList) => {
+          const objPtsVec = new cv.MatVector()
+          const imgPtsVec = new cv.MatVector()
+          const cam = cv.Mat.eye(3, 3, cv.CV_64F)
+          const dist = cv.Mat.zeros(5, 1, cv.CV_64F)
+          const rvecs = new cv.MatVector()
+          const tvecs = new cv.MatVector()
+          const stdI = new cv.Mat()
+          const stdE = new cv.Mat()
+          const pve = new cv.Mat()
+
+          cam.data64F[0] = imageWidth
+          cam.data64F[4] = imageWidth
+          cam.data64F[2] = imageWidth / 2
+          cam.data64F[5] = imageHeight / 2
+
+          for (const { corners, ids } of list) {
+            const op = objectPointsForIds(cv, ids, boardCfg)
+            const ip = cv.matFromArray(ids.length, 1, cv.CV_32FC2, corners)
+
+            objPtsVec.push_back(op)
+            op.delete()
+            imgPtsVec.push_back(ip)
+            ip.delete()
+          }
+
+          try {
+            const rms = cv.calibrateCameraExtended(objPtsVec, imgPtsVec, imageSize, cam, dist, rvecs, tvecs, stdI, stdE, pve, CALIB_FLAGS)
+            const errors = Array.from(pve.data64F as Float64Array)
+
+            return { rms, cam, dist, errors }
+          } finally {
+            objPtsVec.delete()
+            imgPtsVec.delete()
+            rvecs.delete()
+            tvecs.delete()
+            stdI.delete()
+            stdE.delete()
+            pve.delete()
+          }
+        }
+
+        const pass1 = runCalib(imagePointsList)
+
+        console.log(`[calib] pass1 RMS=${pass1.rms.toFixed(3)} per-view: ${pass1.errors.map((v) => v.toFixed(1)).join(', ')}`)
+        pass1.cam.delete()
+        pass1.dist.delete()
+
+        if (pass1.rms > 20) {
+          console.log(`[calib] pass1 did not converge (RMS=${pass1.rms.toFixed(1)}px > 20px), giving up`)
+          setErrorMsg(t.calibrationFailed)
+          setStep('idle')
+
+          return
+        }
+
+        const sorted = [...pass1.errors].sort((a, b) => a - b)
+        const median = sorted[Math.floor(sorted.length / 2)]
+        const threshold = Math.max(median * 3, 2)
+        const inliers = imagePointsList.filter((_, i) => pass1.errors[i] <= threshold)
+
+        console.log(`[calib] outlier filter median=${median.toFixed(1)}px threshold=${threshold.toFixed(1)}px → ${inliers.length}/${pass1.errors.length} inliers`)
+
+        if (inliers.length < MIN_CAPTURES) {
+          setErrorMsg(t.calibrationFailed)
+          setStep('idle')
+
+          return
+        }
+
+        const pass2 = runCalib(inliers)
+
+        console.log(`[calib] pass2 RMS=${pass2.rms.toFixed(3)} per-view: ${pass2.errors.map((v) => v.toFixed(1)).join(', ')}`)
+
+        // Extract before delete() — TypedArray view into WASM memory is invalidated after free.
+        const fx = pass2.cam.data64F[0]
+        const fy = pass2.cam.data64F[4]
+        const cx = pass2.cam.data64F[2]
+        const cy = pass2.cam.data64F[5]
+        const distCoeffs = Array.from(pass2.dist.data64F.slice(0, 5))
+
+        pass2.cam.delete()
+        pass2.dist.delete()
+
+        setCalibResult({ model: 'standard', fisheye: false, fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: pass2.rms, capturedAt: new Date().toISOString() })
+        setStep('result')
       }
-
-      console.log(`[calib] ${imagePointsList.length} captures, imageSize=${imageWidth}×${imageHeight}`)
-
-      try {
-        rms = cv.calibrateCameraExtended(objPtsVec, imgPtsVec, imageSize, cameraMatrix, distCoeffs, rvecs, tvecs, stdDevIntrinsics, stdDevExtrinsics, perViewErrors)
-        console.log(
-          `[calib] RMS=${rms.toFixed(3)} per-view errors: ${Array.from(perViewErrors.data64F as Float64Array)
-            .map((v) => v.toFixed(1))
-            .join(', ')}`,
-        )
-      } finally {
-        objPtsVec.delete()
-        imgPtsVec.delete()
-        rvecs.delete()
-        tvecs.delete()
-        stdDevIntrinsics.delete()
-        stdDevExtrinsics.delete()
-        perViewErrors.delete()
-        // imageSize is cv.Size — no .delete()
-      }
-
-      const d = cameraMatrix.data64F
-      const k = distCoeffs.data64F
-
-      cameraMatrix.delete()
-      distCoeffs.delete()
-
-      const result: CameraCalibration = {
-        fx: d[0],
-        fy: d[4],
-        cx: d[2],
-        cy: d[5],
-        distCoeffs: [k[0], k[1], k[2], k[3], k[4]],
-        imageWidth,
-        imageHeight,
-        reprojectionError: rms,
-        capturedAt: new Date().toISOString(),
-      }
-
-      setCalibResult(result)
-      setStep('result')
-    } catch {
+    } catch (err) {
+      console.error('[camera-calib] calibration threw', err)
       setErrorMsg(t.calibrationFailed)
       setStep('idle')
     }
-  }, [context, opencvSvc, poses, t])
+  }, [boardCfg, context, lensType, opencvSvc, poses, t])
 
   // ── Save ──────────────────────────────────────────────────────────────
 
@@ -624,6 +743,31 @@ export function PluginRoot({ context }: Props) {
               </select>
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.lensTypeLabel}</p>
+            <div className="flex flex-col gap-1.5">
+              {(['standard', 'wide-angle'] as const).map((type) => (
+                <label key={type} className="flex items-center gap-1.5 cursor-pointer">
+                  <input type="radio" name="lensType" value={type} checked={lensType === type} onChange={() => setLensType(type)} className="accent-primary" />
+                  <span className="text-sm">{type === 'standard' ? t.lensStandard : t.lensWideAngle}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.squareSizeLabel}</p>
+            <input
+              type="number"
+              min={1}
+              max={200}
+              step={0.5}
+              value={sampleMm}
+              onChange={(e) => setSampleMm(Math.max(1, Number(e.target.value) || 1))}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
 
           <Button variant="outline" onClick={handleDetect} disabled={!selectedCamera || !opencvReady}>
             {t.detectButton}
@@ -743,21 +887,14 @@ export function PluginRoot({ context }: Props) {
     )
   }
 
-  // ── Computing step ────────────────────────────────────────────────────
-
-  if (step === 'computing') {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="text-center space-y-3">
-          <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin mx-auto" />
-          <h2 className="text-lg font-semibold">{t.computingTitle}</h2>
-          <p className="text-sm text-muted-foreground">{t.computingDesc}</p>
-        </div>
-      </div>
-    )
-  }
-
   // ── Result step ───────────────────────────────────────────────────────
+
+  if (step === 'result' && !calibResult) {
+    console.error('[camera-calib] step=result but calibResult is null — reverting to idle')
+    setStep('idle')
+
+    return null
+  }
 
   if (step === 'result' && calibResult) {
     const rms = calibResult.reprojectionError
@@ -782,7 +919,7 @@ export function PluginRoot({ context }: Props) {
                 <IntrinsicRow label={t.fyLabel} value={calibResult.fy.toFixed(2)} />
                 <IntrinsicRow label={t.cxLabel} value={calibResult.cx.toFixed(2)} />
                 <IntrinsicRow label={t.cyLabel} value={calibResult.cy.toFixed(2)} />
-                <IntrinsicRow label={t.distLabel} value={calibResult.distCoeffs.map((v) => v.toFixed(4)).join(', ')} />
+                <IntrinsicRow label={calibResult.model === 'wide-angle' ? t.distWideAngleLabel : t.distLabel} value={calibResult.distCoeffs.map((v) => v.toFixed(4)).join(', ')} />
                 <IntrinsicRow label={t.imageSizeLabel} value={`${calibResult.imageWidth} × ${calibResult.imageHeight}`} />
               </tbody>
             </table>

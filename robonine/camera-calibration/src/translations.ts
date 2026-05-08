@@ -12,6 +12,10 @@ interface Translations {
   selectCamera: string
   local: string
   remote: string
+  lensTypeLabel: string
+  lensStandard: string
+  lensWideAngle: string
+  squareSizeLabel: string
   detectButton: string
   boardFound: string
   boardNotFound: string
@@ -29,9 +33,6 @@ interface Translations {
   poseCaptured: string
   poseMissed: string
   cancelButton: string
-  // computing step
-  computingTitle: string
-  computingDesc: string
   // result step
   resultTitle: string
   rmsLabel: string
@@ -43,6 +44,7 @@ interface Translations {
   cxLabel: string
   cyLabel: string
   distLabel: string
+  distWideAngleLabel: string
   imageSizeLabel: string
   saveButton: string
   retakeButton: string
@@ -54,41 +56,43 @@ interface Translations {
   // errors
   tooFewCaptures: string
   calibrationFailed: string
+  charucoNotSupported: string
   saveFailed: string
 }
 
 export const translations: Record<string, Translations> = {
   en: {
     title: 'Camera calibration',
-    description: 'Calibrate the gripper camera using a printed 7×9 checkerboard.',
+    description: 'Calibrate the gripper camera using a printed ChArUco board (8×5 squares, 35 mm).',
     notConnected: 'Connect a robot to start calibration.',
     notCalibrated: 'The robot must be calibrated before camera calibration. Run "Calibrate robot" first.',
     opencvNotReady: 'OpenCV is loading…',
     connectButton: 'Connect robot',
     startButton: 'Start calibration',
     setupTitle: 'Select camera',
-    setupDesc: 'Choose the gripper camera and verify the checkerboard is visible.',
+    setupDesc: 'Choose the gripper camera and verify the ChArUco board is visible.',
     selectCamera: 'Camera',
     local: 'local',
     remote: 'remote',
+    lensTypeLabel: 'Lens type',
+    lensStandard: 'Standard',
+    lensWideAngle: 'Wide-angle (up to ~120°)',
+    squareSizeLabel: 'Size of the 50mm sample',
     detectButton: 'Detect board',
     boardFound: 'Board detected',
-    boardNotFound: 'Board not found — ensure all squares are visible and the board is flat',
+    boardNotFound: 'Board not found — ensure markers are visible and the board is flat',
     continueButton: 'Continue',
     confirmTitle: 'Place the checkerboard',
-    confirmDesc:
-      'Print the 7×9 checkerboard (A4, 20 mm squares) and lay it flat on the surface in front of the robot. Keep it stationary during the entire capture process. The robot will move automatically.',
+    confirmDesc: 'Do not move the board or the robot during calibration, and keep the camera view unobstructed. The robot will move automatically.',
     beginButton: 'Begin capture',
     capturingTitle: 'Capturing',
-    capturingDesc: 'The robot is moving through poses. Keep the checkerboard in place.',
+    capturingDesc: 'The robot is moving through poses. Keep the board in place.',
     poseLabel: 'Pose',
     posePending: 'Pending',
     poseMoving: 'Moving…',
     poseCaptured: 'Captured',
     poseMissed: 'Missed',
     cancelButton: 'Cancel',
-    computingTitle: 'Computing calibration',
-    computingDesc: 'Calculating camera parameters…',
     resultTitle: 'Calibration result',
     rmsLabel: 'Reprojection error',
     rmsGood: 'Good',
@@ -98,7 +102,8 @@ export const translations: Record<string, Translations> = {
     fyLabel: 'fy',
     cxLabel: 'cx',
     cyLabel: 'cy',
-    distLabel: 'Distortion',
+    distLabel: 'Distortion (k1, k2, p1, p2, k3)',
+    distWideAngleLabel: 'Distortion (k1, k2, p1, p2, k3, k4, k5, k6)',
     imageSizeLabel: 'Image size',
     saveButton: 'Save',
     retakeButton: 'Retake',
@@ -106,8 +111,9 @@ export const translations: Record<string, Translations> = {
     savedDesc: 'The camera intrinsics have been saved to the robot.',
     doneButton: 'Done',
     poseRange: 'Pose deviation',
-    tooFewCaptures: 'Not enough captures. At least 15 successful poses are required.',
+    tooFewCaptures: 'Not enough captures. At least 10 successful poses are required.',
     calibrationFailed: 'Calibration failed. Try again with better lighting or a flatter board.',
+    charucoNotSupported: 'ChArUco detection is not available in the loaded OpenCV build.',
     saveFailed: 'Failed to save calibration.',
   },
 }

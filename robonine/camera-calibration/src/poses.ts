@@ -71,27 +71,35 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
   const WROLL = n - 1 // wrist roll (last arm joint)
 
   // ── Group 1: Roll sweep (7 poses) ────────────────────────────────────────
-  // Uniform step across ±1.0 rad of wrist roll; downward flex keeps the board
-  // well-centred and improves image coverage.
-  for (const roll of [0, -0.35, 0.35, -0.7, 0.7, -1.0, 1.0]) {
+  // Each roll step is paired with a flex that spans the full vertical image
+  // range. Positive flex → board lower in frame; negative flex → board higher.
+  for (const [roll, flex] of [
+    [0, 0.5],
+    [-0.35, 0.3],
+    [0.35, 0.3],
+    [-0.7, -0.1],
+    [0.7, -0.1],
+    [-0.7, -0.4],
+    [0.7, -0.4],
+  ] as Array<[number, number]>) {
     poses.push(
       makePose([
         [WROLL, roll],
-        [WFLEX, -0.35],
+        [WFLEX, flex],
       ]),
     )
   }
 
   // ── Group 2: Tilt + roll combos (6 poses) ────────────────────────────────
-  // Three flex levels (strong forward tilt, mild tilt, slight back-tilt),
-  // each paired with two opposite rolls so no two poses are mirror-symmetric.
+  // Three flex levels spanning bottom→top image regions, each paired with
+  // two opposite rolls for cx/cy constraint.
   for (const [flex, roll] of [
-    [-0.5, -0.5],
-    [-0.5, 0.5],
-    [-0.3, -0.7],
-    [-0.3, 0.7],
-    [0.1, -0.5],
-    [0.1, 0.5],
+    [0.6, -0.5],
+    [0.6, 0.5],
+    [0.2, -0.7],
+    [0.2, 0.7],
+    [-0.3, -0.5],
+    [-0.3, 0.5],
   ] as Array<[number, number]>) {
     poses.push(
       makePose([
@@ -102,12 +110,18 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
   }
 
   // ── Group 3: Lateral shift (4 poses) ─────────────────────────────────────
-  // Vary base pan so the board appears in different image columns.
-  for (const pan of [-0.3, -0.15, 0.15, 0.3]) {
+  // Vary base pan so the board appears in different image columns; alternate
+  // flex between lower and upper image regions for vertical coverage.
+  for (const [pan, flex] of [
+    [-0.3, 0.5],
+    [-0.15, -0.2],
+    [0.15, -0.2],
+    [0.3, 0.5],
+  ] as Array<[number, number]>) {
     poses.push(
       makePose([
         [BASE, pan],
-        [WFLEX, -0.35],
+        [WFLEX, flex],
       ]),
     )
   }
@@ -142,18 +156,18 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
 
     // ── Group 5: Lateral + roll combos (4 poses) ─────────────────────────
     // Board in different image quadrants while also rotated — strongest
-    // constraint on principal point (cx, cy).
-    for (const [pan, roll] of [
-      [-0.25, 0.6],
-      [-0.25, -0.6],
-      [0.25, 0.6],
-      [0.25, -0.6],
-    ] as Array<[number, number]>) {
+    // constraint on principal point (cx, cy). Alternate flex for vertical spread.
+    for (const [pan, roll, flex] of [
+      [-0.25, 0.6, 0.5],
+      [-0.25, -0.6, 0.5],
+      [0.25, 0.6, -0.3],
+      [0.25, -0.6, -0.3],
+    ] as Array<[number, number, number]>) {
       poses.push(
         makePose([
           [BASE, pan],
           [WROLL, roll],
-          [WFLEX, -0.35],
+          [WFLEX, flex],
         ]),
       )
     }
@@ -183,25 +197,26 @@ export function generateCalibrationPoses(robotConfig: PluginRobotConfig, scale =
       ]),
     )
 
-    // ── Group 7: Strong tilt (3 poses) ───────────────────────────────────
-    // Steep out-of-plane tilt constrains cx/cy better than mild tilt.
+    // ── Group 7: Bottom coverage (3 poses) ───────────────────────────────
+    // Positive flex pushes the board into the lower image region; combined
+    // with pan/roll for quadrant diversity.
     poses.push(
       makePose([
-        [WFLEX, -0.6],
+        [WFLEX, 0.7],
         [WROLL, 0.0],
       ]),
     )
     poses.push(
       makePose([
         [BASE, -0.2],
-        [WFLEX, -0.45],
+        [WFLEX, 0.6],
         [WROLL, 0.4],
       ]),
     )
     poses.push(
       makePose([
         [BASE, 0.2],
-        [WFLEX, -0.45],
+        [WFLEX, 0.6],
         [WROLL, -0.4],
       ]),
     )

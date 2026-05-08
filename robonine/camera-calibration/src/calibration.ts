@@ -1,426 +1,168 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CV = any
 
-/**
- * Detect inner checkerboard corners.
- *
- * Two strategies in order:
- *
- * 1. Contour-based: adaptiveThreshold → findContours → approxPolyDP → cluster
- *    quad corners. Uses count ≥ 4 then count ≥ 3 tiers only — count ≥ 2 is
- *    excluded because it produces 150+ noisy candidates that send the calibration
- *    solver to a degenerate minimum (RMS > 100 px, fx/fy ratio > 8).
- *
- * 2. goodFeaturesToTrack fallback.
- *
- * Positions are refined with cornerSubPix after detection (when available).
- * Accepts partial boards (≥ 67 % of rows) so fisheye views where one board row
- * is outside the frame still contribute to calibration.
- *
- * Returns Float32Array of [x0,y0, x1,y1, …] in row-major order (top row first,
- * left-to-right within each row), or null when detection fails.
- */
-export function detectChessboardCorners(cv: CV, gray: CV, cols: number, rows: number): { corners: Float32Array; cols: number; rows: number } | null {
-  const raw = detectContour(cv, gray, cols, rows) ?? detectGFTT(cv, gray, cols, rows)
-
-  console.log(`[chess] detect ${cols}×${rows} on ${gray.cols}×${gray.rows} image`)
-
-  if (!raw) {
-    console.log('[chess] FAILED')
-
-    return null
-  }
-
-  const corners = refineSubPix(cv, gray, raw)
-  const nRows = corners.length / (cols * 2)
-
-  console.log(`[chess] SUCCESS: ${cols}×${nRows}` + (nRows < rows ? ` (partial, needed ${rows})` : ''))
-
-  return { corners, cols, rows: nRows }
+export interface CharucoBoardConfig {
+  /** Number of squares horizontally. */
+  squaresX: number
+  /** Number of squares vertically. */
+  squaresY: number
+  /** Side length of one chessboard square in metres. */
+  squareLength: number
+  /** Side length of one ArUco marker in metres (typically ≤ squareLength). */
+  markerLength: number
+  /** OpenCV predefined dictionary id (e.g. 0 = DICT_4X4_50). */
+  dictId: number
+  /**
+   * Use the legacy (pre-OpenCV-4.6) ChArUco marker placement. Most third-party
+   * generators (calib.io, chev.me) still emit the legacy layout. When set, the
+   * detector will swap the marker→corner id mapping accordingly.
+   */
+  legacyPattern?: boolean
 }
 
-// ── Sub-pixel refinement ──────────────────────────────────────────────────────
+export interface CharucoBoardHandle {
+  board: CV
+  dict: CV
+  ids: CV
+  arucoParams: CV
+  refineParams: CV
+  charucoParams: CV
+  detector: CV
+  cfg: CharucoBoardConfig
+}
 
-function refineSubPix(cv: CV, gray: CV, corners: Float32Array): Float32Array {
-  const n = corners.length / 2
+export function isCharucoSupported(cv: CV): boolean {
+  return typeof cv?.aruco_CharucoBoard === 'function' && typeof cv?.aruco_CharucoDetector === 'function'
+}
 
-  if (typeof cv.cornerSubPix !== 'function') {
-    return corners
+export function createCharucoBoard(cv: CV, cfg: CharucoBoardConfig): CharucoBoardHandle {
+  const dict = cv.getPredefinedDictionary(cfg.dictId)
+  // OpenCV.js binds the 5-arg constructor; the 5th param is an InputArray of
+  // marker ids to use. An empty Mat selects ids 0..N-1 (default behaviour).
+  const ids = new cv.Mat()
+  const board = new cv.aruco_CharucoBoard(new cv.Size(cfg.squaresX, cfg.squaresY), cfg.squareLength, cfg.markerLength, dict, ids)
+  const arucoParams = new cv.aruco_DetectorParameters()
+  const refineParams = new cv.aruco_RefineParameters(10.0, 3.0, true)
+  const charucoParams = new cv.aruco_CharucoParameters()
+
+  if (cfg.legacyPattern && typeof board.setLegacyPattern === 'function') {
+    board.setLegacyPattern(true)
   }
 
-  const mat = cv.matFromArray(n, 1, cv.CV_32FC2, Array.from(corners))
+  arucoParams.polygonalApproxAccuracyRate = 0.08
+  // Allow a wider marker-size range (default min 0.03 of image; markers
+  // far from the camera or near image edges fall below).
+  arucoParams.minMarkerPerimeterRate = 0.01
+  arucoParams.maxMarkerPerimeterRate = 4.0
+  // Be slightly more permissive about marker rejection due to perspective.
+  arucoParams.minCornerDistanceRate = 0.03
+
+  const detector = new cv.aruco_CharucoDetector(board, charucoParams, arucoParams, refineParams)
+
+  return { board, dict, ids, arucoParams, refineParams, charucoParams, detector, cfg }
+}
+
+export function destroyCharucoBoard(handle: CharucoBoardHandle) {
+  handle.detector.delete()
+  handle.charucoParams.delete()
+  handle.refineParams.delete()
+  handle.arucoParams.delete()
+  handle.board.delete()
+  handle.ids.delete()
+  handle.dict.delete()
+}
+
+function detectOnce(cv: CV, gray: CV, handle: CharucoBoardHandle): { corners: Float32Array; ids: Int32Array; markers: number; markerIds: number[] } {
+  const charucoCorners = new cv.Mat()
+  const charucoIds = new cv.Mat()
+  const markerCorners = new cv.MatVector()
+  const markerIds = new cv.Mat()
 
   try {
-    const result = new Float32Array(n * 2)
+    const detectedMarkerIds: number[] = []
 
-    cv.cornerSubPix(gray, mat, new cv.Size(11, 11), new cv.Size(-1, -1), new cv.TermCriteria(cv.TERM_CRITERIA_EPS | cv.TERM_CRITERIA_MAX_ITER, 30, 0.001))
+    handle.detector.detectBoard(gray, charucoCorners, charucoIds, markerCorners, markerIds)
+
+    // eslint-disable-next-line local/decls-on-top
+    const n = charucoIds.rows
+    // eslint-disable-next-line local/decls-on-top
+    const markers = markerIds.rows
+    const corners = new Float32Array(n * 2)
+    const ids = new Int32Array(n)
 
     for (let i = 0; i < n; i++) {
-      result[i * 2] = mat.data32F[i * 2]
-      result[i * 2 + 1] = mat.data32F[i * 2 + 1]
+      corners[i * 2] = charucoCorners.data32F[i * 2]
+      corners[i * 2 + 1] = charucoCorners.data32F[i * 2 + 1]
+      ids[i] = charucoIds.data32S[i]
     }
 
-    return result
+    for (let i = 0; i < markers; i++) {
+      detectedMarkerIds.push(markerIds.data32S[i])
+    }
+
+    return { corners, ids, markers, markerIds: detectedMarkerIds }
   } finally {
-    mat.delete()
+    charucoCorners.delete()
+    charucoIds.delete()
+    markerCorners.delete()
+    markerIds.delete()
   }
 }
 
-// ── Approach 1: contour-based ─────────────────────────────────────────────────
-
-function detectContour(cv: CV, gray: CV, cols: number, rows: number): Float32Array | null {
-  const n = cols * rows
-  const blurred = new cv.Mat()
-  const binary = new cv.Mat()
+/**
+ * Detect ChArUco interior corners. Each corner has a stable id, so partial
+ * detections are still safe — id → 3D position is unambiguous.
+ *
+ * Tries both polarities (markers on white and markers on black) and keeps
+ * whichever found more corners. Boards printed with inverted colours (light
+ * markers on dark squares) only register on the bitwise-not pass.
+ *
+ * Returns Float32Array of [x0,y0, x1,y1, …] and Int32Array of ids, or null.
+ */
+export function detectCharucoCorners(cv: CV, gray: CV, handle: CharucoBoardHandle, minCorners = 6): { corners: Float32Array; ids: Int32Array } | null {
+  const direct = detectOnce(cv, gray, handle)
   const inv = new cv.Mat()
-  const contours = new cv.MatVector()
-  const hierarchy = new cv.Mat()
+  let inverted: { corners: Float32Array; ids: Int32Array }
 
   try {
-    const imgArea = gray.cols * gray.rows
-    const allPts: [number, number][] = []
-    // Cluster radius: large enough to merge the 4 same-corner detections (which
-    // are typically 1–5 px apart after approxPolyDP on straight-sided quads) but
-    // small enough to NOT merge adjacent inner corners at the compressed end of a
-    // perspective-foreshortened board (which can be as close as 8–10 px).
-    const CLUSTER_PX = Math.max(4, Math.round(Math.sqrt(imgArea / n) * 0.08))
-    const clusters: { x: number; y: number; count: number }[] = []
-
-    cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 1, 1)
-    cv.adaptiveThreshold(blurred, binary, 255, cv.ADAPTIVE_THRESH_MEAN_C, cv.THRESH_BINARY, 21, 5)
-    cv.bitwise_not(binary, inv)
-
-    const minArea = Math.max(16, imgArea * 0.00005)
-    const maxArea = imgArea * 0.1
-
-    for (const src of [binary, inv]) {
-      cv.findContours(src, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-
-      for (let i = 0; i < contours.size(); i++) {
-        const contour = contours.get(i)
-        const area = cv.contourArea(contour)
-
-        if (area >= minArea && area <= maxArea) {
-          const peri = cv.arcLength(contour, true)
-          const poly = new cv.Mat()
-
-          cv.approxPolyDP(contour, poly, peri * 0.06, true)
-
-          if (poly.rows === 4) {
-            for (let j = 0; j < 4; j++) {
-              allPts.push([poly.data32S[j * 2], poly.data32S[j * 2 + 1]])
-            }
-          }
-
-          poly.delete()
-        }
-
-        contour.delete()
-      }
-    }
-
-    if (allPts.length < n * 2) {
-      console.log(`[contour] FAIL: allPts=${allPts.length} < ${n * 2}`)
-
-      return null
-    }
-
-    const thresh2 = CLUSTER_PX ** 2
-
-    for (const [px, py] of allPts) {
-      let merged = false
-
-      for (const c of clusters) {
-        if ((c.x - px) ** 2 + (c.y - py) ** 2 < thresh2) {
-          c.x = (c.x * c.count + px) / (c.count + 1)
-          c.y = (c.y * c.count + py) / (c.count + 1)
-          c.count++
-          merged = true
-          break
-        }
-      }
-
-      if (!merged) {
-        clusters.push({ x: px, y: py, count: 1 })
-      }
-    }
-
-    const countDist = clusters.reduce(
-      (acc, c) => {
-        acc[c.count] = (acc[c.count] ?? 0) + 1
-
-        return acc
-      },
-      {} as Record<number, number>,
-    )
-
-    console.log(`[contour] clusters=${clusters.length} distribution: ${JSON.stringify(countDist)}`)
-
-    // count ≥ 4 then ≥ 3 only.
-    // count ≥ 2 is deliberately skipped: it yields 150–230 noisy candidates that
-    // produce false grid detections with reprojection errors of 50–250 px.
-    for (const minCount of [4, 3] as const) {
-      const tier = clusters.filter((c) => c.count >= minCount).sort((a, b) => b.count - a.count)
-
-      console.log(`[contour] trying count≥${minCount}: ${tier.length} candidates (need ≥${n})`)
-
-      if (tier.length >= n) {
-        const result = orderIntoGrid(tier, cols, rows)
-
-        if (result) {
-          return result
-        }
-      }
-    }
-
-    return null
+    cv.bitwise_not(gray, inv)
+    inverted = detectOnce(cv, inv, handle)
   } finally {
-    blurred.delete()
-    binary.delete()
     inv.delete()
-    contours.delete()
-    hierarchy.delete()
   }
-}
 
-// ── Approach 2: goodFeaturesToTrack ──────────────────────────────────────────
+  const best = inverted.ids.length > direct.ids.length ? inverted : direct
+  const polarity = inverted.ids.length > direct.ids.length ? 'inverted' : 'direct'
 
-function detectGFTT(cv: CV, gray: CV, cols: number, rows: number): Float32Array | null {
-  const n = cols * rows
-  const cornersMat = new cv.Mat()
-
-  try {
-    const maxCorners = n + cols
-    const minDist = Math.max(4, Math.min(8, Math.sqrt((gray.cols * gray.rows) / (n * 100))))
-    const pts: { x: number; y: number }[] = []
-
-    cv.goodFeaturesToTrack(gray, cornersMat, maxCorners, 0.005, minDist)
-
-    console.log(`[gftt] detected=${cornersMat.rows} (need ≥${n})`)
-
-    if (cornersMat.rows < n) {
-      return null
-    }
-
-    for (let i = 0; i < cornersMat.rows; i++) {
-      pts.push({ x: cornersMat.data32F[i * 2], y: cornersMat.data32F[i * 2 + 1] })
-    }
-
-    return orderIntoGrid(pts, cols, rows)
-  } finally {
-    cornersMat.delete()
+  console.log(`[charuco] markers: direct=${direct.markers} inverted=${inverted.markers} | corners: direct=${direct.ids.length} inverted=${inverted.ids.length}`)
+  if (direct.markers > 0) {
+    console.log(`[charuco] marker ids (direct): [${direct.markerIds.sort((a, b) => a - b).join(', ')}]`)
   }
-}
 
-// ── Grid ordering ─────────────────────────────────────────────────────────────
-
-type Pt = { x: number; y: number }
-
-function orderIntoGrid(corners: Pt[], cols: number, rows: number): Float32Array | null {
-  const n = cols * rows
-  const allByY = [...corners].sort((a, b) => a.y - b.y)
-  let Sxx = 0
-  let Syy = 0
-  let Sxy = 0
-  const partialMin = Math.ceil(rows * 0.67)
-
-  if (corners.length < n) {
+  if (best.ids.length < minCorners) {
     return null
   }
 
-  if (allByY[allByY.length - 1].y - allByY[0].y < 5) {
-    return null
-  }
+  console.log(`[charuco] SUCCESS: ${best.ids.length} corners (${polarity})`)
 
-  const pts = corners.slice(0, n)
-  const mx = pts.reduce((s, p) => s + p.x, 0) / pts.length
-  const my = pts.reduce((s, p) => s + p.y, 0) / pts.length
-
-  for (const { x, y } of pts) {
-    const dx = x - mx
-    const dy = y - my
-
-    Sxx += dx * dx
-    Syy += dy * dy
-    Sxy += dx * dy
-  }
-
-  const disc = Math.sqrt(Math.max(0, ((Sxx - Syy) / 2) ** 2 + Sxy ** 2))
-  const lam1 = (Sxx + Syy) / 2 + disc
-  let ax = Sxy
-  let ay = lam1 - Sxx
-  const alen = Math.sqrt(ax * ax + ay * ay)
-
-  if (alen > 1e-10) {
-    ax /= alen
-    ay /= alen
-  } else {
-    ax = 1
-    ay = 0
-  }
-
-  const bx = -ay
-  const by = ax
-
-  console.log(`[order] PCA angle=${(Math.atan2(ay, ax) * (180 / Math.PI)).toFixed(1)}° corners=${corners.length}`)
-
-  const projSrc = (src: Pt[], rx: number, ry: number, cx2: number, cy2: number) =>
-    src.map((p) => ({
-      p,
-      u: (p.x - mx) * rx + (p.y - my) * ry,
-      v: (p.x - mx) * cx2 + (p.y - my) * cy2,
-    }))
-
-  const result =
-    axisGrid(projSrc(pts, ax, ay, bx, by), cols, rows, rows, 'pca-a') ??
-    axisGrid(projSrc(pts, bx, by, ax, ay), cols, rows, rows, 'pca-b') ??
-    axisGrid(
-      pts.map((p) => ({ p, u: p.y, v: p.x })),
-      cols,
-      rows,
-      rows,
-      'y-top',
-    ) ??
-    axisGrid(projSrc(corners, ax, ay, bx, by), cols, rows, partialMin, 'pca-a-all') ??
-    axisGrid(projSrc(corners, bx, by, ax, ay), cols, rows, partialMin, 'pca-b-all') ??
-    axisGrid(
-      allByY.map((p) => ({ p, u: p.y, v: p.x })),
-      cols,
-      rows,
-      partialMin,
-      'y-all',
-    )
-
-  if (result) {
-    console.log(`[order] SUCCESS: ${result.length / (cols * 2)}/${rows} rows`)
-  } else {
-    console.log('[order] FAIL: all methods returned null')
-  }
-
-  return result
+  return { corners: best.corners, ids: best.ids }
 }
 
-function axisGrid(projected: { p: Pt; u: number; v: number }[], cols: number, rows: number, label: string): Float32Array | null {
-  const sorted = [...projected].sort((a, b) => a.u - b.u)
-  const minRows = Math.ceil(rows * 0.67)
+/**
+ * Map ChArUco corner ids to 3D object points on the board (Z=0 plane).
+ * Layout: id = row * (squaresX - 1) + col, row-major from top-left.
+ */
+export function objectPointsForIds(cv: CV, ids: Int32Array, cfg: CharucoBoardConfig): CV {
+  const innerCols = cfg.squaresX - 1
+  const pts: number[] = []
 
-  if (sorted.length < minRows * cols) {
-    return null
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i]
+    const col = id % innerCols
+    const row = Math.floor(id / innerCols)
+
+    pts.push(col * cfg.squareLength, row * cfg.squareLength, 0)
   }
 
-  const gaps = sorted.slice(1).map((p, i) => ({ gap: p.u - sorted[i].u, idx: i + 1 }))
-
-  gaps.sort((a, b) => b.gap - a.gap)
-
-  for (let extra = 0; extra <= 3; extra++) {
-    const nBounds = Math.min(sorted.length - 1, rows - 1 + extra)
-    const boundaries = new Set(gaps.slice(0, nBounds).map((g) => g.idx))
-    const groups: (typeof sorted)[] = []
-    let cur: typeof sorted = [sorted[0]]
-    let changed = true
-    let idx = 0
-
-    for (let i = 1; i < sorted.length; i++) {
-      if (boundaries.has(i)) {
-        groups.push(cur)
-        cur = [sorted[i]]
-      } else {
-        cur.push(sorted[i])
-      }
-    }
-    groups.push(cur)
-
-    while (changed) {
-      changed = false
-
-      for (let gi = groups.length - 1; gi >= 0; gi--) {
-        if (groups[gi].length >= 2 * cols) {
-          const g = [...groups[gi]].sort((a, b) => a.u - b.u)
-          let maxGapIdx = 1
-          let maxGap = -Infinity
-
-          for (let k = 1; k < g.length; k++) {
-            const gap = g[k].u - g[k - 1].u
-
-            if (gap > maxGap) {
-              maxGap = gap
-              maxGapIdx = k
-            }
-          }
-
-          groups.splice(gi, 1, g.slice(0, maxGapIdx), g.slice(maxGapIdx))
-          changed = true
-          break
-        }
-      }
-    }
-
-    const valid = groups.filter((g) => g.length >= cols)
-
-    console.log(`[axisGrid ${label}] extra=${extra} valid≥${cols}: ${valid.length} (need ${minRows}..${rows})`)
-
-    if (valid.length < minRows) {
-      continue
-    }
-
-    valid.sort((a, b) => a.reduce((s, p) => s + p.u, 0) / a.length - b.reduce((s, p) => s + p.u, 0) / b.length)
-
-    const nRows = Math.min(valid.length, rows)
-    const result = new Float32Array(nRows * cols * 2)
-
-    for (let r = 0; r < nRows; r++) {
-      const row = [...valid[r]].sort((a, b) => a.v - b.v).slice(0, cols)
-
-      for (const { p } of row) {
-        result[idx++] = p.x
-        result[idx++] = p.y
-      }
-    }
-
-    // Normalize: rows top→bottom, columns left→right in image.
-    // PCA eigenvector sign is arbitrary — without this, row/column order flips
-    // between views and gives calibrateCameraExtended contradictory 2D↔3D pairs.
-    if (nRows > 1) {
-      let firstY = 0
-      let lastY = 0
-
-      for (let c = 0; c < cols; c++) {
-        firstY += result[c * 2 + 1]
-        lastY += result[(nRows - 1) * cols * 2 + c * 2 + 1]
-      }
-
-      if (firstY > lastY) {
-        for (let r = 0; r < Math.floor(nRows / 2); r++) {
-          const a = r * cols * 2
-          const b = (nRows - 1 - r) * cols * 2
-          const tmp = result.slice(a, a + cols * 2)
-
-          result.copyWithin(a, b, b + cols * 2)
-          result.set(tmp, b)
-        }
-      }
-    }
-
-    if (cols > 1 && result[0] > result[(cols - 1) * 2]) {
-      for (let r = 0; r < nRows; r++) {
-        const base = r * cols * 2
-
-        for (let c = 0; c < Math.floor(cols / 2); c++) {
-          const ai = base + c * 2
-          const bi = base + (cols - 1 - c) * 2
-          const tx = result[ai]
-          const ty = result[ai + 1]
-
-          result[ai] = result[bi]
-          result[ai + 1] = result[bi + 1]
-          result[bi] = tx
-          result[bi + 1] = ty
-        }
-      }
-    }
-
-    return result
-  }
-
-  return null
+  return cv.matFromArray(ids.length, 1, cv.CV_32FC3, pts)
 }

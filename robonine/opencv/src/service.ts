@@ -44,9 +44,14 @@ function loadOpenCV(): Promise<void> {
         return
       }
 
-      // opencv.js 4.x exposes Module["then"] which fires after onRuntimeInitialized.
+      // With MODULARIZE=1 the UMD wrapper sets window.cv to the factory's return
+      // value, which is a Promise<module>. Capture the resolved instance and
+      // replace window.cv so getCv() returns the actual cv object, not the Promise.
       if (typeof cv['then'] === 'function') {
-        ;(cv as { then: (fn: () => void) => void }).then(() => resolve())
+        ;(cv as Promise<unknown>).then((module) => {
+          win['cv'] = module
+          resolve()
+        })
 
         return
       }
