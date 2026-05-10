@@ -9,6 +9,7 @@ interface Translations {
   // setup step
   setupTitle: string
   setupDesc: string
+  setupDownload: string
   selectCamera: string
   local: string
   remote: string
@@ -71,7 +72,8 @@ export const translations: Record<string, Translations> = {
     connectButton: 'Connect robot',
     startButton: 'Start calibration',
     setupTitle: 'Select camera',
-    setupDesc: 'Choose the gripper camera and verify the ChArUco board is visible.',
+    setupDesc: 'Choose the gripper camera and verify the calibration board is visible.',
+    setupDownload: 'Download A4 print here',
     selectCamera: 'Camera',
     local: 'local',
     remote: 'remote',
@@ -127,7 +129,8 @@ export const translations: Record<string, Translations> = {
     connectButton: 'Подключить робота',
     startButton: 'Начать калибровку',
     setupTitle: 'Выбор камеры',
-    setupDesc: 'Выберите камеру захвата и убедитесь, что доска ChArUco видна.',
+    setupDesc: 'Выберите камеру захвата и убедитесь, что калибровочная доска видна.',
+    setupDownload: 'Скачать распечатку А4',
     selectCamera: 'Камера',
     local: 'локальная',
     remote: 'удалённая',

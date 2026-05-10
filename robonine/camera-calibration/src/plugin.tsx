@@ -720,8 +720,17 @@ export function PluginRoot({ context }: Props) {
 
         <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '260px' }}>
           <h2 className="text-lg font-semibold">{t.setupTitle}</h2>
-          <p className="text-sm text-muted-foreground">{t.setupDesc}</p>
-
+          <p className="text-sm text-muted-foreground">
+            {t.setupDesc}{' '}
+            <a
+              href="https://github.com/roboninecom/lab-plugins/blob/master/robonine/camera-calibration/charuco_8x5_35mm_a4.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-2"
+            >
+              {t.setupDownload}
+            </a>
+          </p>
           {context.cameras.length > 1 && (
             <div className="space-y-1.5">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.selectCamera}</p>
