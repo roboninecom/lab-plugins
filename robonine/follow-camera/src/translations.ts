@@ -1,0 +1,20 @@
+export const translations = {
+  en: {
+    title: 'Follow camera',
+    description: 'Hold Shift and click on the camera feed to move the robot to that point using inverse kinematics.',
+    beforeYouStart: 'Before you start',
+    step1: 'Make sure the area around the robot is clear.',
+    step2: 'Connect the robot and a camera.',
+    connectRobot: 'Connect robot',
+    camera: 'Camera',
+    noCamera: 'No camera available',
+    aimWith: 'Aim with',
+    cameraNode: 'Camera',
+    gripperTip: 'Gripper',
+    holdShift: 'Hold Shift and click to move',
+    tracking: 'Tracking',
+    noIkModel: 'IK model not available for this robot.',
+    noRobotConfig: 'Robot model unknown — cannot compute kinematics.',
+    noCalibration: 'No camera calibration — using estimated intrinsics.',
+  },
+} satisfies Record<string, Record<string, string>>
