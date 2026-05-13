@@ -1,8 +1,8 @@
 import { REGISTER_MAP, ADDR_LOCK, EEPROM_BLOCK_LEN, RAM_BLOCK_LEN, RAM_START, decodeRegisters, type StsRegister } from './registerMap'
-import { Search } from 'lucide-react'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { translations, type Copies } from './translations'
 import type { PluginContext } from '@robonine/plugin-sdk'
+import { Search } from 'lucide-react'
 
 interface Props {
   context: PluginContext
@@ -187,7 +187,7 @@ export function PluginRoot({ context }: Props) {
     if (connected) {
       readAll()
     }
-  }, [connected]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connected])
 
   const scanBus = useCallback(async () => {
     const found: number[] = []
@@ -301,9 +301,7 @@ export function PluginRoot({ context }: Props) {
   }, [context, servoId, cWriteAddr, cWriteData, copies])
 
   const filterLower = filter.toLowerCase()
-
   const matchesFilter = (r: (typeof REGISTER_MAP)[0]) => !filterLower || r.name.toLowerCase().includes(filterLower) || r.description.toLowerCase().includes(filterLower)
-
   const eepromRegs = REGISTER_MAP.filter((r) => r.area === 'EEPROM' && matchesFilter(r))
   const ramRegs = REGISTER_MAP.filter((r) => r.area === 'RAM' && matchesFilter(r))
 
