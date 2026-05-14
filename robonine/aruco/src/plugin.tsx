@@ -204,6 +204,7 @@ export function PluginRoot({ context }: Props) {
   const [selectedDictId, setSelectedDictId] = useState<number>(ARUCO_DICTS['4X4_50'])
   const [markerSizeCm, setMarkerSizeCm] = useState(4)
   const [detections, setDetections] = useState<ArucoDetection[]>([])
+  const [camPose, setCamPose] = useState<FKResult | undefined>(undefined)
   const cameraViewRef = useRef<CameraViewHandle>(null)
 
   // Refs so the rAF loop sees the latest values without restarting.
@@ -213,6 +214,7 @@ export function PluginRoot({ context }: Props) {
   const selectedDictIdRef = useRef(selectedDictId)
   const markerSizeCmRef = useRef(markerSizeCm)
   const cameraPoseRef = useRef<FKResult | undefined>(undefined)
+  const setCamPoseRef = useRef(setCamPose)
   const cameraCalibrationRef = useRef<CameraCalibrationData | null>(null)
   const contextRef = useRef(context)
   const tRef = useRef(t)
@@ -225,6 +227,7 @@ export function PluginRoot({ context }: Props) {
   markerSizeCmRef.current = markerSizeCm
   contextRef.current = context
   tRef.current = t
+  setCamPoseRef.current = setCamPose
   if (context.cameraCalibration !== null) {
     cameraCalibrationRef.current = context.cameraCalibration
   }
@@ -262,8 +265,6 @@ export function PluginRoot({ context }: Props) {
     const loop = () => {
       const cameraView = cameraViewRef.current
       const service = arucoServiceRef.current
-      const cp = cameraPoseRef.current
-      const robotConnected = contextRef.current.connection.connected
 
       if (!running) {
         return
@@ -342,27 +343,6 @@ export function PluginRoot({ context }: Props) {
       }
 
       drawOverlay(ctx, lastResult, canvas.width, canvas.height, markerSizeCmRef.current / 100, lastIntrinsics)
-
-      if (robotConnected) {
-        const lines = cp ? [`cam x: ${cp.position[0].toFixed(3)} m`, `cam y: ${cp.position[1].toFixed(3)} m`, `cam z: ${cp.position[2].toFixed(3)} m`] : ['cam: —']
-
-        ctx.save()
-        ctx.font = '12px monospace'
-        ctx.textAlign = 'left'
-        ctx.textBaseline = 'top'
-
-        const boxH = lines.length * 16 + 3
-
-        ctx.fillStyle = 'rgba(0,0,0,0.55)'
-        ctx.fillRect(8, 8, 120, boxH)
-        ctx.fillStyle = cp ? '#4ade80' : '#94a3b8'
-
-        for (let i = 0; i < lines.length; i++) {
-          ctx.fillText(lines[i], 14, 12 + i * 16)
-        }
-
-        ctx.restore()
-      }
     }
 
     animId = requestAnimationFrame(loop)
@@ -374,8 +354,6 @@ export function PluginRoot({ context }: Props) {
         return
       }
 
-      running = false
-      cancelAnimationFrame(animId)
       poseReading = true
 
       const { jointServoId, servoNeutral, encoderToJoint } = pluginCtx.robotConfig
@@ -400,12 +378,11 @@ export function PluginRoot({ context }: Props) {
       })()
         .then((pose) => {
           cameraPoseRef.current = pose
+          setCamPoseRef.current(pose)
         })
         .catch(() => {})
         .finally(() => {
           poseReading = false
-          running = true
-          animId = requestAnimationFrame(loop)
         })
     }, 1000)
 
@@ -449,7 +426,21 @@ export function PluginRoot({ context }: Props) {
 
   return (
     <div className="flex flex-col gap-4 flex-1 min-h-0 lg:flex-row">
-      <CameraView canvasMode stream={selectedCamera?.stream} ref={cameraViewRef} className="flex-1 min-h-[40vh]" />
+      <CameraView canvasMode stream={selectedCamera?.stream} ref={cameraViewRef} className="flex-1 min-h-[40vh]">
+        {context.connection.connected && (
+          <div className="absolute top-2 left-2 rounded bg-black/55 px-2 py-1 font-mono text-xs">
+            {camPose ? (
+              <div className="text-green-400">
+                <div>cam x: {camPose.position[0].toFixed(3)} m</div>
+                <div>cam y: {camPose.position[1].toFixed(3)} m</div>
+                <div>cam z: {camPose.position[2].toFixed(3)} m</div>
+              </div>
+            ) : (
+              <span className="text-slate-400">cam: —</span>
+            )}
+          </div>
+        )}
+      </CameraView>
 
       {/* Controls + detections */}
       <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '250px' }}>
