@@ -64,7 +64,16 @@ export const REGISTER_MAP: StsRegister[] = [
     range: '0–1000',
     description: 'Maximum torque as PWM duty ×10 (1000 = 100%). Copied to RAM Torque Limit on power-on.',
   },
-  { addr: 18, name: 'Phase', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '—', range: 'bitmask', description: 'Motor phase config (hardware-specific). Bit0=direction (0=normal, 1=reversed), bit4=multi-turn mode. Factory value varies by unit.' },
+  {
+    addr: 18,
+    name: 'Phase',
+    bytes: 1,
+    access: 'RW',
+    area: 'EEPROM',
+    defaultVal: '—',
+    range: 'bitmask',
+    description: 'Motor phase config (hardware-specific). Bit0=direction (0=normal, 1=reversed), bit4=multi-turn mode. Factory value varies by unit.',
+  },
   {
     addr: 19,
     name: 'Unload Condition',
