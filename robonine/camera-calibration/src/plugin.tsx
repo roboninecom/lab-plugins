@@ -1,8 +1,8 @@
 import { createCharucoBoard, destroyCharucoBoard, detectCharucoCorners, isCharucoSupported, objectPointsForIds } from './calibration'
+import type { CameraHandle, CameraViewHandle, PluginContext } from '@robonine/plugin-sdk'
 import type { CameraCalibration, CameraCalibrationService } from './service'
 import type { CharucoBoardConfig, CharucoBoardHandle } from './calibration'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CameraHandle, PluginContext } from '@robonine/plugin-sdk'
 import { generateCalibrationPoses } from './poses'
 import { translations } from './translations'
 
@@ -81,11 +81,8 @@ export function PluginRoot({ context }: Props) {
 
   const [calibResult, setCalibResult] = useState<CameraCalibration | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const previewRef = useRef<HTMLCanvasElement>(null)
-  const offscreenRef = useRef<HTMLCanvasElement | null>(null)
+  const cameraViewRef = useRef<CameraViewHandle>(null)
   const cancelRef = useRef(false)
-  const animRef = useRef<number>(0)
   const selectedCamera = useMemo<CameraHandle | null>(() => context.cameras.find((c) => c.id === selectedCameraId) ?? null, [context.cameras, selectedCameraId])
   const poses = useMemo(() => (context.robotConfig ? generateCalibrationPoses(context.robotConfig, poseScale) : null), [context.robotConfig, poseScale])
   const isConnected = context.connection.connected
@@ -103,7 +100,7 @@ export function PluginRoot({ context }: Props) {
     return 'text-red-600 dark:text-red-400'
   }
 
-  const { Button } = context.ui
+  const { Button, CameraView } = context.ui
 
   // ── OpenCV readiness ──────────────────────────────────────────────────
 
@@ -127,101 +124,18 @@ export function PluginRoot({ context }: Props) {
   // ── Attach video stream ───────────────────────────────────────────────
 
   useEffect(() => {
-    const video = videoRef.current
-
-    if (!video) {
+    if (!selectedCamera) {
       return
     }
-
-    video.srcObject = selectedCamera?.stream ?? null
-
-    if (selectedCamera) {
-      // Request the highest resolution the camera supports. applyConstraints
-      // modifies the existing track in-place — no second stream needed.
-      const track = selectedCamera.stream.getVideoTracks()[0]
-
-      track?.applyConstraints({ width: { ideal: 9999 }, height: { ideal: 9999 } }).catch(() => {})
-      video.play().catch(() => {})
-    }
-  }, [selectedCamera, step])
-
-  // ── Live preview loop ─────────────────────────────────────────────────
-
-  useEffect(() => {
-    const video = videoRef.current
-    const canvas = previewRef.current
-    let running = true
-
-    if (step !== 'setup' && step !== 'confirm' && step !== 'capturing') {
-      return
-    }
-    if (!video || !canvas) {
-      return
-    }
-
-    const ctx2d = canvas.getContext('2d')
-
-    if (!ctx2d) {
-      return
-    }
-
-    const loop = () => {
-      if (!running) {
-        return
-      }
-      animRef.current = requestAnimationFrame(loop)
-
-      if (video.readyState < 2 || video.videoWidth === 0) {
-        return
-      }
-
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-      }
-
-      ctx2d.drawImage(video, 0, 0)
-    }
-
-    animRef.current = requestAnimationFrame(loop)
-
-    return () => {
-      running = false
-      cancelAnimationFrame(animRef.current)
-    }
-  }, [step, selectedCamera])
+    // Request the highest resolution the camera supports. applyConstraints
+    // modifies the existing track in-place — no second stream needed.
+    selectedCamera.stream
+      .getVideoTracks()[0]
+      ?.applyConstraints({ width: { ideal: 9999 }, height: { ideal: 9999 } })
+      .catch(() => {})
+  }, [selectedCamera])
 
   // ── Helpers ───────────────────────────────────────────────────────────
-
-  function getOffscreen(): HTMLCanvasElement {
-    if (!offscreenRef.current) {
-      offscreenRef.current = document.createElement('canvas')
-    }
-
-    return offscreenRef.current
-  }
-
-  function captureFrame(): ImageData | null {
-    const video = videoRef.current
-    const canvas = getOffscreen()
-
-    if (!video || video.readyState < 2 || video.videoWidth === 0) {
-      return null
-    }
-
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-
-    if (!ctx) {
-      return null
-    }
-
-    ctx.drawImage(video, 0, 0)
-
-    return ctx.getImageData(0, 0, canvas.width, canvas.height)
-  }
 
   function toGray(cv: CV, imageData: ImageData): CV {
     const src = cv.matFromImageData(imageData)
@@ -253,7 +167,7 @@ export function PluginRoot({ context }: Props) {
 
   const handleDetect = useCallback(() => {
     const cv = opencvSvc?.getCv() as CV | undefined
-    const imageData = captureFrame()
+    const imageData = cameraViewRef.current?.captureFrame() ?? null
 
     if (!cv) {
       console.error('[camera-calib] handleDetect: OpenCV not ready')
@@ -280,7 +194,7 @@ export function PluginRoot({ context }: Props) {
 
     try {
       const { found, corners, ids } = findCorners(cv, imageData, board)
-      const canvas = previewRef.current
+      const canvas = cameraViewRef.current?.canvas ?? null
 
       setDetectResult(found ? 'found' : 'notfound')
 
@@ -293,7 +207,7 @@ export function PluginRoot({ context }: Props) {
     } finally {
       destroyCharucoBoard(board)
     }
-  }, [boardCfg, opencvSvc, selectedCamera])
+  }, [boardCfg, opencvSvc])
 
   // ── Capture loop ──────────────────────────────────────────────────────
 
@@ -302,6 +216,9 @@ export function PluginRoot({ context }: Props) {
     const confirmed = await context.showSafetyWarning()
     const cleanup = context.servo.registerEmergencyStop()
     const imagePointsList: { corners: Float32Array; ids: Int32Array }[] = []
+    const capturedMirrorH = cameraViewRef.current?.mirrorH ?? false
+    const capturedMirrorV = cameraViewRef.current?.mirrorV ?? false
+    const capturedCameraName = selectedCamera?.label
     let capturedWidth = 0
     let capturedHeight = 0
 
@@ -369,7 +286,7 @@ export function PluginRoot({ context }: Props) {
       }
 
       // eslint-disable-next-line local/decls-on-top
-      const imageData = captureFrame()
+      const imageData = cameraViewRef.current?.captureFrame() ?? null
 
       if (!imageData) {
         setPoseStatuses((prev) => {
@@ -391,7 +308,7 @@ export function PluginRoot({ context }: Props) {
           await new Promise<void>((resolve) => setTimeout(resolve, SETTLE_MS))
 
           // eslint-disable-next-line local/decls-on-top
-          const retryData = captureFrame()
+          const retryData = cameraViewRef.current?.captureFrame() ?? null
 
           if (retryData) {
             const retryResult = findCorners(cv, retryData, board)
@@ -406,7 +323,7 @@ export function PluginRoot({ context }: Props) {
         const { found, corners, ids } = result
 
         if (found) {
-          const canvas = previewRef.current
+          const canvas = cameraViewRef.current?.canvas ?? null
 
           console.log(`[capture ${imagePointsList.length}] pose=${i} corners=${ids.length}`)
           imagePointsList.push({ corners, ids })
@@ -521,7 +438,21 @@ export function PluginRoot({ context }: Props) {
           const distCoeffs = Array.from(dist.data64F.slice(0, 8))
 
           console.log(`[calib] wide-angle RMS=${rms.toFixed(3)}`)
-          setCalibResult({ model: 'wide-angle', fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: rms, capturedAt: new Date().toISOString() })
+          setCalibResult({
+            model: 'wide-angle',
+            fx,
+            fy,
+            cx,
+            cy,
+            distCoeffs,
+            imageWidth,
+            imageHeight,
+            reprojectionError: rms,
+            capturedAt: new Date().toISOString(),
+            cameraName: capturedCameraName,
+            mirrorH: capturedMirrorH,
+            mirrorV: capturedMirrorV,
+          })
           setStep('result')
         } finally {
           objPtsVec.delete()
@@ -622,7 +553,21 @@ export function PluginRoot({ context }: Props) {
         pass2.cam.delete()
         pass2.dist.delete()
 
-        setCalibResult({ model: 'standard', fx, fy, cx, cy, distCoeffs, imageWidth, imageHeight, reprojectionError: pass2.rms, capturedAt: new Date().toISOString() })
+        setCalibResult({
+          model: 'standard',
+          fx,
+          fy,
+          cx,
+          cy,
+          distCoeffs,
+          imageWidth,
+          imageHeight,
+          reprojectionError: pass2.rms,
+          capturedAt: new Date().toISOString(),
+          cameraName: capturedCameraName,
+          mirrorH: capturedMirrorH,
+          mirrorV: capturedMirrorV,
+        })
         setStep('result')
       }
     } catch (err) {
@@ -630,7 +575,7 @@ export function PluginRoot({ context }: Props) {
       setErrorMsg(t.calibrationFailed)
       setStep('idle')
     }
-  }, [boardCfg, context, lensType, opencvSvc, poses, t])
+  }, [boardCfg, context, lensType, opencvSvc, poses, selectedCamera, t])
 
   // ── Save ──────────────────────────────────────────────────────────────
 
@@ -710,13 +655,7 @@ export function PluginRoot({ context }: Props) {
   if (step === 'setup') {
     return (
       <div className="flex flex-col gap-4 flex-1 min-h-0 lg:flex-row">
-        <video ref={videoRef} autoPlay playsInline muted style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px' }} />
-
-        <div className="relative flex-1 min-h-[40vh] rounded-lg border bg-black overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <canvas ref={previewRef} style={{ width: '100%', height: 'auto', maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
-          </div>
-        </div>
+        <CameraView canvasMode stream={selectedCamera?.stream} ref={cameraViewRef} className="flex-1 min-h-[40vh]" />
 
         <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '260px' }}>
           <h2 className="text-lg font-semibold">{t.setupTitle}</h2>
@@ -809,13 +748,7 @@ export function PluginRoot({ context }: Props) {
   if (step === 'confirm') {
     return (
       <div className="flex flex-col gap-4 flex-1 min-h-0 lg:flex-row">
-        <video ref={videoRef} autoPlay playsInline muted style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px' }} />
-
-        <div className="relative flex-1 min-h-[40vh] rounded-lg border bg-black overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <canvas ref={previewRef} style={{ width: '100%', height: 'auto', maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
-          </div>
-        </div>
+        <CameraView canvasMode stream={selectedCamera?.stream} ref={cameraViewRef} className="flex-1 min-h-[40vh]" />
 
         <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '260px' }}>
           <h2 className="text-lg font-semibold">{t.confirmTitle}</h2>
@@ -842,13 +775,7 @@ export function PluginRoot({ context }: Props) {
 
     return (
       <div className="flex flex-col gap-4 flex-1 min-h-0 lg:flex-row">
-        <video ref={videoRef} autoPlay playsInline muted style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px' }} />
-
-        <div className="relative flex-1 min-h-[40vh] rounded-lg border bg-black overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <canvas ref={previewRef} style={{ width: '100%', height: 'auto', maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
-          </div>
-        </div>
+        <CameraView canvasMode stream={selectedCamera?.stream} ref={cameraViewRef} className="flex-1 min-h-[40vh]" />
 
         <div className="flex flex-col gap-4 lg:shrink-0 min-h-0" style={{ maxWidth: '260px' }}>
           <h2 className="text-lg font-semibold">{t.capturingTitle}</h2>
@@ -938,6 +865,9 @@ export function PluginRoot({ context }: Props) {
                 <IntrinsicRow label={t.cyLabel} value={calibResult.cy.toFixed(2)} />
                 <IntrinsicRow label={calibResult.model === 'wide-angle' ? t.distWideAngleLabel : t.distLabel} value={calibResult.distCoeffs.map((v) => v.toFixed(4)).join(', ')} />
                 <IntrinsicRow label={t.imageSizeLabel} value={`${calibResult.imageWidth} × ${calibResult.imageHeight}`} />
+                {calibResult.cameraName && <IntrinsicRow label={t.cameraNameLabel} value={calibResult.cameraName} />}
+                <IntrinsicRow label={t.mirrorHLabel} value={calibResult.mirrorH ? 'Yes' : 'No'} />
+                <IntrinsicRow label={t.mirrorVLabel} value={calibResult.mirrorV ? 'Yes' : 'No'} />
               </tbody>
             </table>
           </div>

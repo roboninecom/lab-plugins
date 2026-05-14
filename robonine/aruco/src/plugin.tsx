@@ -1,4 +1,4 @@
-import type { CameraCalibrationData, CameraHandle, FKResult, PluginContext } from '@robonine/plugin-sdk'
+import type { CameraCalibrationData, CameraHandle, CameraViewHandle, FKResult, PluginContext } from '@robonine/plugin-sdk'
 import { type ArucoDetection, ARUCO_DICTS, type ArucoService, type ArucoDictKey } from './service'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
@@ -204,8 +204,7 @@ export function PluginRoot({ context }: Props) {
   const [selectedDictId, setSelectedDictId] = useState<number>(ARUCO_DICTS['4X4_50'])
   const [markerSizeCm, setMarkerSizeCm] = useState(4)
   const [detections, setDetections] = useState<ArucoDetection[]>([])
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const cameraViewRef = useRef<CameraViewHandle>(null)
 
   // Refs so the rAF loop sees the latest values without restarting.
   const arucoReadyRef = useRef(arucoReady)
@@ -217,6 +216,7 @@ export function PluginRoot({ context }: Props) {
   const cameraCalibrationRef = useRef<CameraCalibrationData | null>(null)
   const contextRef = useRef(context)
   const tRef = useRef(t)
+  const { CameraView } = context.ui
 
   arucoReadyRef.current = arucoReady
   arucoErrorRef.current = arucoError
@@ -250,25 +250,8 @@ export function PluginRoot({ context }: Props) {
     }
   }, [context.cameras, selectedCameraId])
 
-  // Bind camera stream to the hidden video element.
-  useEffect(() => {
-    const video = videoRef.current
-
-    if (!video) {
-      return
-    }
-
-    video.srcObject = selectedCamera?.stream ?? null
-
-    if (selectedCamera) {
-      video.play().catch(() => {})
-    }
-  }, [selectedCamera])
-
   // Detection + rendering loop (restarts when the camera changes).
   const startLoop = useCallback(() => {
-    const video = videoRef.current
-    const canvas = canvasRef.current
     let animId: number
     let running = true
     let lastIds = ''
@@ -276,17 +259,8 @@ export function PluginRoot({ context }: Props) {
     let lastIntrinsics: { fx: number; fy: number; cx: number; cy: number; distCoeffs?: number[] } | undefined = undefined
     let poseReading = false
 
-    if (!video || !canvas) {
-      return () => {}
-    }
-
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-
-    if (!ctx) {
-      return () => {}
-    }
-
     const loop = () => {
+      const cameraView = cameraViewRef.current
       const service = arucoServiceRef.current
       const cp = cameraPoseRef.current
       const robotConnected = contextRef.current.connection.connected
@@ -296,17 +270,23 @@ export function PluginRoot({ context }: Props) {
       }
       animId = requestAnimationFrame(loop)
 
-      if (video.readyState < 2 || video.videoWidth === 0) {
+      const canvas = cameraView?.canvas
+
+      if (!canvas) {
         return
       }
 
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        canvas.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`
+      const ctx = canvas.getContext('2d')
+
+      if (!ctx) {
+        return
       }
 
-      ctx.drawImage(video, 0, 0)
+      const video = cameraView.video
+
+      if (!video || video.readyState < 2 || video.videoWidth === 0) {
+        return
+      }
 
       if (!arucoReadyRef.current) {
         const msg = arucoErrorRef.current ? tRef.current.statusError : tRef.current.statusLoading
@@ -326,36 +306,38 @@ export function PluginRoot({ context }: Props) {
         const calibration = cameraCalibrationRef.current ?? undefined
         const w = canvas.width
         const h = canvas.height
-        const imageData = ctx.getImageData(0, 0, w, h)
+        const imageData = cameraView.captureFrame()
         const sizeCm = markerSizeCmRef.current
         const markerSizeM = sizeCm > 0 ? sizeCm / 100 : undefined
 
-        // Scale intrinsics to actual capture resolution; calibration may be at a different res.
-        const cameraIntrinsics = calibration
-          ? {
-              fx: calibration.fx * (w / calibration.imageWidth),
-              fy: calibration.fy * (h / calibration.imageHeight),
-              cx: calibration.cx * (w / calibration.imageWidth),
-              cy: calibration.cy * (h / calibration.imageHeight),
-              distCoeffs: calibration.distCoeffs,
-            }
-          : undefined
+        if (imageData) {
+          // Scale intrinsics to actual capture resolution; calibration may be at a different res.
+          const cameraIntrinsics = calibration
+            ? {
+                fx: calibration.fx * (w / calibration.imageWidth),
+                fy: calibration.fy * (h / calibration.imageHeight),
+                cx: calibration.cx * (w / calibration.imageWidth),
+                cy: calibration.cy * (h / calibration.imageHeight),
+                distCoeffs: calibration.distCoeffs,
+              }
+            : undefined
 
-        const result = service.detectMarkers(imageData, {
-          dictId: selectedDictIdRef.current,
-          markerSize: markerSizeM,
-          cameraPose: cameraPoseRef.current,
-          cameraIntrinsics,
-        })
+          const result = service.detectMarkers(imageData, {
+            dictId: selectedDictIdRef.current,
+            markerSize: markerSizeM,
+            cameraPose: cameraPoseRef.current,
+            cameraIntrinsics,
+          })
 
-        lastResult = result
-        lastIntrinsics = cameraIntrinsics
+          lastResult = result
+          lastIntrinsics = cameraIntrinsics
 
-        const nextIds = result.map((d) => d.id).join(',')
+          const nextIds = result.map((d) => d.id).join(',')
 
-        if (result.length > 0 || nextIds !== lastIds) {
-          lastIds = nextIds
-          setDetections([...result])
+          if (result.length > 0 || nextIds !== lastIds) {
+            lastIds = nextIds
+            setDetections([...result])
+          }
         }
       }
 
@@ -466,127 +448,117 @@ export function PluginRoot({ context }: Props) {
   // ─── Main layout ──────────────────────────────────────────────────────────────
 
   return (
-    <>
-      {/* Off-screen video — display:none prevents frame delivery in Chrome's invisible-video optimization */}
-      <video ref={videoRef} autoPlay playsInline muted style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px' }} />
+    <div className="flex flex-col gap-4 flex-1 min-h-0 lg:flex-row">
+      <CameraView canvasMode stream={selectedCamera?.stream} ref={cameraViewRef} className="flex-1 min-h-[40vh]" />
 
-      <div className="flex flex-col gap-4 flex-1 min-h-0 lg:flex-row">
-        {/* Camera canvas */}
-        <div className="relative flex-1 min-h-[40vh] rounded-lg border bg-black overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <canvas ref={canvasRef} style={{ width: '100%', height: 'auto', maxWidth: '100%', maxHeight: '100%', display: 'block' }} />
-          </div>
+      {/* Controls + detections */}
+      <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '250px' }}>
+        <h2 className="hidden lg:block text-lg font-semibold">{t.title}</h2>
+
+        {/* Status */}
+        <div className="rounded-lg border bg-card p-4 flex items-center gap-3">
+          <span className={['w-2.5 h-2.5 rounded-full shrink-0', arucoError ? 'bg-destructive' : arucoReady ? 'bg-green-500' : 'bg-muted-foreground animate-pulse'].join(' ')} />
+          <span className="text-sm font-medium">{arucoError ? t.statusError : arucoReady ? t.statusReady : t.statusLoading}</span>
         </div>
 
-        {/* Controls + detections */}
-        <div className="space-y-4 lg:shrink-0" style={{ maxWidth: '250px' }}>
-          <h2 className="hidden lg:block text-lg font-semibold">{t.title}</h2>
-
-          {/* Status */}
-          <div className="rounded-lg border bg-card p-4 flex items-center gap-3">
-            <span className={['w-2.5 h-2.5 rounded-full shrink-0', arucoError ? 'bg-destructive' : arucoReady ? 'bg-green-500' : 'bg-muted-foreground animate-pulse'].join(' ')} />
-            <span className="text-sm font-medium">{arucoError ? t.statusError : arucoReady ? t.statusReady : t.statusLoading}</span>
-          </div>
-
-          {/* Camera selector */}
-          {context.cameras.length > 1 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.camera}</p>
-              <select
-                value={selectedCameraId ?? ''}
-                onChange={(e) => setSelectedCameraId(e.target.value || null)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                {context.cameras.map((cam) => (
-                  <option key={cam.id} value={cam.id}>
-                    {cam.label} ({cam.source === 'local' ? t.local : t.remote})
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Dictionary selector */}
+        {/* Camera selector */}
+        {context.cameras.length > 1 && (
           <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.dictionary}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.camera}</p>
             <select
-              value={selectedDictId}
-              onChange={(e) => setSelectedDictId(Number(e.target.value))}
+              value={selectedCameraId ?? ''}
+              onChange={(e) => setSelectedCameraId(e.target.value || null)}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
-              {DICT_OPTIONS.map(([key, value]) => (
-                <option key={key} value={value}>
-                  DICT_{key}
+              {context.cameras.map((cam) => (
+                <option key={cam.id} value={cam.id}>
+                  {cam.label} ({cam.source === 'local' ? t.local : t.remote})
                 </option>
               ))}
             </select>
           </div>
+        )}
 
-          {/* Marker size */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.markerSize}</p>
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={1}
-                max={200}
-                step={0.5}
-                value={markerSizeCm}
-                onChange={(e) => setMarkerSizeCm(Math.max(0, parseFloat(e.target.value) || 0))}
-                className="w-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <span className="text-sm text-muted-foreground">{t.markerSizeUnit}</span>
-            </div>
-          </div>
-
-          {/* Detected markers */}
-          <div className="space-y-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.detectedMarkers}</p>
-            {detections.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t.noMarkers}</p>
-            ) : (
-              <div className="space-y-1.5">
-                {detections.map(({ id, pose }) => (
-                  <div key={id} className="rounded-md border bg-card px-3 py-2">
-                    <span className="text-xs font-mono font-semibold text-green-600 dark:text-green-400">#{id}</span>
-                    {pose && (
-                      <>
-                        <p className="text-[10px] text-muted-foreground mt-1">{t.cameraFrame}</p>
-                        <div className="grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
-                          <span>x</span>
-                          <span>{pose.tvec[0].toFixed(3)} m</span>
-                          <span>y</span>
-                          <span>{pose.tvec[1].toFixed(3)} m</span>
-                          <span>z</span>
-                          <span>{pose.tvec[2].toFixed(3)} m</span>
-                        </div>
-                      </>
-                    )}
-                    {pose?.worldPosition && (
-                      <>
-                        <p className="text-[10px] text-muted-foreground mt-1">{t.worldFrame}</p>
-                        <div className="grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
-                          <span>x</span>
-                          <span>{pose.worldPosition[0].toFixed(3)} m</span>
-                          <span>y</span>
-                          <span>{pose.worldPosition[1].toFixed(3)} m</span>
-                          <span>z</span>
-                          <span>{pose.worldPosition[2].toFixed(3)} m</span>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {!context.connection.connected && <p className="text-xs text-muted-foreground break-words">{t.connectRobotNote}</p>}
-          <p className="text-xs text-muted-foreground" style={{ wordWrap: 'break-word' }}>
-            {t.serviceNote}
-          </p>
+        {/* Dictionary selector */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.dictionary}</p>
+          <select
+            value={selectedDictId}
+            onChange={(e) => setSelectedDictId(Number(e.target.value))}
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {DICT_OPTIONS.map(([key, value]) => (
+              <option key={key} value={value}>
+                DICT_{key}
+              </option>
+            ))}
+          </select>
         </div>
+
+        {/* Marker size */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.markerSize}</p>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min={1}
+              max={200}
+              step={0.5}
+              value={markerSizeCm}
+              onChange={(e) => setMarkerSizeCm(Math.max(0, parseFloat(e.target.value) || 0))}
+              className="w-20 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <span className="text-sm text-muted-foreground">{t.markerSizeUnit}</span>
+          </div>
+        </div>
+
+        {/* Detected markers */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.detectedMarkers}</p>
+          {detections.length === 0 ? (
+            <p className="text-sm text-muted-foreground">{t.noMarkers}</p>
+          ) : (
+            <div className="space-y-1.5">
+              {detections.map(({ id, pose }) => (
+                <div key={id} className="rounded-md border bg-card px-3 py-2">
+                  <span className="text-xs font-mono font-semibold text-green-600 dark:text-green-400">#{id}</span>
+                  {pose && (
+                    <>
+                      <p className="text-[10px] text-muted-foreground mt-1">{t.cameraFrame}</p>
+                      <div className="grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
+                        <span>x</span>
+                        <span>{pose.tvec[0].toFixed(3)} m</span>
+                        <span>y</span>
+                        <span>{pose.tvec[1].toFixed(3)} m</span>
+                        <span>z</span>
+                        <span>{pose.tvec[2].toFixed(3)} m</span>
+                      </div>
+                    </>
+                  )}
+                  {pose?.worldPosition && (
+                    <>
+                      <p className="text-[10px] text-muted-foreground mt-1">{t.worldFrame}</p>
+                      <div className="grid grid-cols-[1ch_1fr] gap-x-2 font-mono text-xs text-muted-foreground">
+                        <span>x</span>
+                        <span>{pose.worldPosition[0].toFixed(3)} m</span>
+                        <span>y</span>
+                        <span>{pose.worldPosition[1].toFixed(3)} m</span>
+                        <span>z</span>
+                        <span>{pose.worldPosition[2].toFixed(3)} m</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {!context.connection.connected && <p className="text-xs text-muted-foreground break-words">{t.connectRobotNote}</p>}
+        <p className="text-xs text-muted-foreground" style={{ wordWrap: 'break-word' }}>
+          {t.serviceNote}
+        </p>
       </div>
-    </>
+    </div>
   )
 }

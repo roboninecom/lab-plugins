@@ -48,6 +48,9 @@ interface Translations {
   distLabel: string
   distWideAngleLabel: string
   imageSizeLabel: string
+  cameraNameLabel: string
+  mirrorHLabel: string
+  mirrorVLabel: string
   saveButton: string
   retakeButton: string
   // saved step
@@ -109,6 +112,9 @@ export const translations: Record<string, Translations> = {
     distLabel: 'Distortion (k1, k2, p1, p2, k3)',
     distWideAngleLabel: 'Distortion (k1, k2, p1, p2, k3, k4, k5, k6)',
     imageSizeLabel: 'Image size',
+    cameraNameLabel: 'Camera',
+    mirrorHLabel: 'Mirror H',
+    mirrorVLabel: 'Mirror V',
     saveButton: 'Save',
     retakeButton: 'Retake',
     savedTitle: 'Calibration saved',
@@ -166,6 +172,9 @@ export const translations: Record<string, Translations> = {
     distLabel: 'Дисторсия (k1, k2, p1, p2, k3)',
     distWideAngleLabel: 'Дисторсия (k1, k2, p1, p2, k3, k4, k5, k6)',
     imageSizeLabel: 'Размер изображения',
+    cameraNameLabel: 'Камера',
+    mirrorHLabel: 'Отражение H',
+    mirrorVLabel: 'Отражение V',
     saveButton: 'Сохранить',
     retakeButton: 'Повторить',
     savedTitle: 'Калибровка сохранена',

@@ -13,6 +13,9 @@ export interface CameraCalibration {
   /** RMS reprojection error in pixels */
   reprojectionError: number
   capturedAt: string
+  cameraName?: string
+  mirrorH?: boolean
+  mirrorV?: boolean
 }
 
 export interface CameraCalibrationService {

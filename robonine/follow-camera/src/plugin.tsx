@@ -1,5 +1,5 @@
+import type { CameraViewHandle, FKResult, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { FKResult, PluginContext } from '@robonine/plugin-sdk'
 import { translations } from './translations'
 
 interface Props {
@@ -7,6 +7,7 @@ interface Props {
 }
 
 const MIN_DEPTH = 0.05
+const SIM_BALL_HIDDEN: [number, number, number] = [0, 0, 100]
 
 function Crosshair({ x, y }: { x: number; y: number }) {
   const R = 28
@@ -25,22 +26,23 @@ function Crosshair({ x, y }: { x: number; y: number }) {
 
 export function PluginRoot({ context }: Props) {
   const t = useMemo(() => translations[context.locale as keyof typeof translations] ?? translations.en, [context.locale])
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const cameraViewRef = useRef<CameraViewHandle>(null)
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [shiftHeld, setShiftHeld] = useState(false)
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null)
-  // true = camera aims at cursor; false = gripper tip aims at cursor
-  const [aimWithCamera, setAimWithCamera] = useState(true)
   const [isTracking, setIsTracking] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
+  const [simMode, setSimMode] = useState(false)
   const ikPendingRef = useRef(false)
   const lastPositionsRef = useRef<number[] | null>(null)
   const safetyShownRef = useRef(false)
-  const aimWithCameraRef = useRef(aimWithCamera)
   const cameraLinkRef = useRef('camera_virtual')
+  const cameraOffsetRef = useRef<[number, number, number]>([0, 0, 0])
   const sortedJointNamesRef = useRef<string[]>([])
+  const simModeRef = useRef(simMode)
+  const worldViewRef = useRef<WorldViewApi>(null)
 
-  aimWithCameraRef.current = aimWithCamera
+  simModeRef.current = simMode
 
   useEffect(() => {
     const config = context.robotConfig
@@ -56,13 +58,21 @@ export function PluginRoot({ context }: Props) {
       .sort(([, a], [, b]) => a - b)
       .map(([name]) => name)
 
-    const fkNodes = (config as Record<string, unknown>).fkNodes as Array<{ linkName: string }> | undefined
+    const fkNodes = (config as unknown as Record<string, unknown>).fkNodes as Array<{ linkName: string; offset?: [number, number, number] }> | undefined
     const camNode = fkNodes?.find((n) => n.linkName.toLowerCase().includes('camera'))
 
     if (camNode) {
       cameraLinkRef.current = camNode.linkName
+      cameraOffsetRef.current = camNode.offset ?? [0, 0, 0]
     }
   }, [context.robotConfig, t.noRobotConfig])
+
+  // Apply camera-local offset to FK world position.
+  const applyLocalOffset = useCallback((pos: [number, number, number], rot: [[number, number, number], [number, number, number], [number, number, number]]): [number, number, number] => {
+    const [ox, oy, oz] = cameraOffsetRef.current
+
+    return [pos[0] + rot[0][0] * ox + rot[0][1] * oy + rot[0][2] * oz, pos[1] + rot[1][0] * ox + rot[1][1] * oy + rot[1][2] * oz, pos[2] + rot[2][0] * ox + rot[2][1] * oy + rot[2][2] * oz]
+  }, [])
 
   const selectedCamera = useMemo(() => context.cameras.find((c) => c.id === selectedCameraId) ?? null, [context.cameras, selectedCameraId])
 
@@ -73,12 +83,6 @@ export function PluginRoot({ context }: Props) {
       setSelectedCameraId(null)
     }
   }, [context.cameras, selectedCameraId])
-
-  useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = selectedCamera?.stream ?? null
-    }
-  }, [selectedCamera, context.connection.connected])
 
   useEffect(() => {
     if (context.connection.connected && !safetyShownRef.current) {
@@ -178,10 +182,9 @@ export function PluginRoot({ context }: Props) {
         const positions = lastPositionsRef.current
         const angleMap: Record<string, number> = {}
         const cal = context.cameraCalibration
-        const vid = videoRef.current
+        const vid = cameraViewRef.current?.video ?? null
         const config = context.robotConfig
         let fkCam: FKResult
-        let ikTarget: [number, number, number]
         let camLinkUsed = cameraLinkRef.current
 
         if (!positions) {
@@ -199,9 +202,9 @@ export function PluginRoot({ context }: Props) {
         }
 
         const fkEff = await context.kinematics.forwardKinematics(angleMap)
-        const [cx, cy, cz] = fkCam.position
-        const [ex, ey, ez] = fkEff.position
         const R = fkCam.rotation
+        const [cx, cy, cz] = applyLocalOffset(fkCam.position, R)
+        const [ex, ey, ez] = fkEff.position
         const vw = vid?.videoWidth ?? 640
         const vh = vid?.videoHeight ?? 480
         const fx = cal?.fx ?? 0.8 * Math.max(vw, vh)
@@ -221,14 +224,7 @@ export function PluginRoot({ context }: Props) {
         const toEy = ey - cy
         const toEz = ez - cz
         const depth = Math.max(MIN_DEPTH, Math.sqrt(toEx * toEx + toEy * toEy + toEz * toEz))
-
-        if (aimWithCameraRef.current) {
-          // Camera mode: camera goes to foot → gripper overshoots by (eff-cam)
-          ikTarget = [ex + depth * rdx, ey + depth * rdy, ez + depth * rdz]
-        } else {
-          // Gripper mode: gripper goes to foot on the ray
-          ikTarget = [cx + depth * rdx, cy + depth * rdy, cz + depth * rdz]
-        }
+        const ikTarget: [number, number, number] = [ex + depth * rdx, ey + depth * rdy, ez + depth * rdz]
 
         console.log(
           '[follow-camera] link:',
@@ -244,6 +240,14 @@ export function PluginRoot({ context }: Props) {
           'target:',
           ikTarget.map((v) => v.toFixed(3)),
         )
+
+        if (simModeRef.current) {
+          worldViewRef.current?.setTargetPosition(ikTarget)
+          setStatusMsg(null)
+          setIsTracking(true)
+
+          return
+        }
 
         const solution = await context.kinematics.inverseKinematics(ikTarget, angleMap)
 
@@ -290,7 +294,7 @@ export function PluginRoot({ context }: Props) {
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const rect = e.currentTarget.getBoundingClientRect()
-      const vid = videoRef.current
+      const vid = cameraViewRef.current?.video ?? null
 
       if (!shiftHeld) {
         return
@@ -302,8 +306,10 @@ export function PluginRoot({ context }: Props) {
 
       const relX = e.clientX - rect.left
       const relY = e.clientY - rect.top
-      const pixelU = (relX / rect.width) * vid.videoWidth
-      const pixelV = (relY / rect.height) * vid.videoHeight
+      const rawU = (relX / rect.width) * vid.videoWidth
+      const rawV = (relY / rect.height) * vid.videoHeight
+      const pixelU = cameraViewRef.current?.mirrorH ? vid.videoWidth - rawU : rawU
+      const pixelV = cameraViewRef.current?.mirrorV ? vid.videoHeight - rawV : rawV
 
       void computeAndMove(pixelU, pixelV)
     },
@@ -313,6 +319,10 @@ export function PluginRoot({ context }: Props) {
   const handleMouseLeave = useCallback(() => {
     setCrosshairPos(null)
     setIsTracking(false)
+  }, [])
+
+  const handleSimModeToggle = useCallback(() => {
+    setSimMode((prev) => !prev)
   }, [])
 
   if (!context.connection.connected) {
@@ -340,22 +350,75 @@ export function PluginRoot({ context }: Props) {
 
   return (
     <div className="flex flex-col gap-6 flex-1 min-h-0 lg:flex-row">
-      <div className="relative flex-1 min-h-0 overflow-hidden rounded-lg border bg-black">
-        {selectedCamera ? (
-          <>
-            <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-contain" />
-            <div className="absolute inset-0" style={{ cursor: shiftHeld ? 'none' : 'default' }} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} onClick={handleClick}>
-              {shiftHeld && crosshairPos && <Crosshair x={crosshairPos.x} y={crosshairPos.y} />}
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-sm text-muted-foreground">{t.noCamera}</p>
+      <div className="flex flex-col gap-2 flex-1 min-h-0">
+        {simMode && (
+          <div className="flex-1 min-h-0 rounded-lg border overflow-hidden">
+            <context.WorldView
+              ref={worldViewRef}
+              showTargetSphere
+              targetPosition={SIM_BALL_HIDDEN}
+              targetSphereRadius={0.0075}
+              cameraDistanceScale={0.6}
+              trackLivePosition
+              showCameraFrustum
+              cameraCalibration={context.cameraCalibration}
+            />
           </div>
         )}
+        <context.ui.CameraView
+          ref={cameraViewRef}
+          className="flex-1 min-h-0"
+          stream={selectedCamera?.stream}
+          cursor={shiftHeld ? 'none' : 'default'}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          onClick={handleClick}
+          noCamera={
+            <div className="flex items-center justify-center h-full">
+              <p className="text-sm text-muted-foreground">{t.noCamera}</p>
+            </div>
+          }
+        >
+          {shiftHeld && crosshairPos && <Crosshair x={crosshairPos.x} y={crosshairPos.y} />}
+        </context.ui.CameraView>
       </div>
 
       <div className="space-y-5 lg:w-[260px] lg:max-w-[260px] lg:shrink-0">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.simulationMode}</p>
+          <button
+            role="switch"
+            aria-checked={simMode}
+            onClick={handleSimModeToggle}
+            style={{
+              position: 'relative',
+              width: 36,
+              height: 20,
+              borderRadius: 10,
+              border: 'none',
+              cursor: 'pointer',
+              transition: 'background 0.2s',
+              background: simMode ? 'var(--primary)' : 'rgba(120,120,120,0.35)',
+              flexShrink: 0,
+            }}
+          >
+            <span
+              style={{
+                position: 'absolute',
+                top: 2,
+                left: 2,
+                width: 16,
+                height: 16,
+                borderRadius: 8,
+                background: 'var(--background)',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                transition: 'transform 0.15s',
+                transform: simMode ? 'translateX(16px)' : 'translateX(0)',
+              }}
+            />
+          </button>
+        </div>
+
         {context.cameras.length > 1 && (
           <div className="space-y-1.5">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.camera}</p>
@@ -372,18 +435,6 @@ export function PluginRoot({ context }: Props) {
             </select>
           </div>
         )}
-
-        <div className="space-y-1.5">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.aimWith}</p>
-          <div className="grid grid-cols-2 gap-1 rounded-lg border p-1">
-            <button onClick={() => setAimWithCamera(true)} className={`rounded py-1.5 text-sm transition-colors ${aimWithCamera ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
-              {t.cameraNode}
-            </button>
-            <button onClick={() => setAimWithCamera(false)} className={`rounded py-1.5 text-sm transition-colors ${!aimWithCamera ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}>
-              {t.gripperTip}
-            </button>
-          </div>
-        </div>
 
         <div className="rounded-md border bg-muted/50 p-3 text-sm space-y-1.5">
           <div className="flex items-center gap-2">
