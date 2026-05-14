@@ -1,3 +1,12 @@
+// Sources used to verify this register map:
+// - Official Feetech Arduino SDK (SMS_STS.h / SMS_STS.cpp): https://github.com/ftservo/FTServo_Arduino
+// - matthieuvigne/STS_servos (most complete named register set): https://github.com/matthieuvigne/STS_servos/blob/master/src/STSServoDriver.h
+// - huggingface/lerobot feetech tables (sign-magnitude encodings): https://github.com/huggingface/lerobot/blob/main/src/lerobot/motors/feetech/tables.py
+// - commanderfun/STS3215 register reference (defaults, units): https://github.com/commanderfun/STS3215/blob/main/REGISTER_REFERENCE.md
+// - iotdesignshop/Feetech-tuna (real-world Phase register values): https://github.com/iotdesignshop/Feetech-tuna/blob/main/servotemplates.py
+// - dgmz/feetech-servo-tool (cross-model ranges): https://github.com/dgmz/feetech-servo-tool/blob/main/servo.py
+// - Waveshare ST3215 user manual: https://files.waveshare.com/upload/f/f4/ST3215_Servo_User_Manual.pdf
+
 export type RegisterAccess = 'R' | 'RW'
 export type RegisterArea = 'EEPROM' | 'RAM'
 
@@ -55,16 +64,16 @@ export const REGISTER_MAP: StsRegister[] = [
     range: '0–1000',
     description: 'Maximum torque as PWM duty ×10 (1000 = 100%). Copied to RAM Torque Limit on power-on.',
   },
-  { addr: 18, name: 'Phase', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '0', range: '0–1', description: 'Motor direction: 0=normal, 1=reversed' },
+  { addr: 18, name: 'Phase', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '—', range: 'bitmask', description: 'Motor phase config (hardware-specific). Bit0=direction (0=normal, 1=reversed), bit4=multi-turn mode. Factory value varies by unit.' },
   {
     addr: 19,
     name: 'Unload Condition',
     bytes: 1,
     access: 'RW',
     area: 'EEPROM',
-    defaultVal: '0',
+    defaultVal: '37',
     range: 'bitmask',
-    description: 'Conditions that disable torque: bit0=voltage, bit2=temperature, bit3=current, bit5=overload',
+    description: 'Conditions that disable torque: bit0=voltage, bit1=sensor, bit2=temperature, bit3=current, bit4=angle limit, bit5=overload',
   },
   {
     addr: 20,
@@ -72,9 +81,9 @@ export const REGISTER_MAP: StsRegister[] = [
     bytes: 1,
     access: 'RW',
     area: 'EEPROM',
-    defaultVal: '0',
+    defaultVal: '37',
     range: 'bitmask',
-    description: 'Conditions that blink the status LED. Same bit positions as Unload Condition.',
+    description: 'Conditions that blink the status LED: bit0=voltage, bit1=sensor, bit2=temperature, bit3=current, bit4=angle limit, bit5=overload',
   },
   { addr: 21, name: 'P Coefficient', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '32', range: '0–255', description: 'PID proportional gain (position loop)' },
   { addr: 22, name: 'D Coefficient', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '32', range: '0–255', description: 'PID derivative gain' },
@@ -89,8 +98,8 @@ export const REGISTER_MAP: StsRegister[] = [
     range: '0–1000',
     description: 'Minimum motor output to overcome static friction before PID takes over',
   },
-  { addr: 26, name: 'CW Dead Zone', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '1', range: '0–32', description: 'Clockwise position insensitive dead zone in encoder counts' },
-  { addr: 27, name: 'CCW Dead Zone', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '1', range: '0–32', description: 'Counter-clockwise position insensitive dead zone in encoder counts' },
+  { addr: 26, name: 'CW Dead Zone', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '1', range: '0–255', description: 'Clockwise position insensitive dead zone in encoder counts' },
+  { addr: 27, name: 'CCW Dead Zone', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '1', range: '0–255', description: 'Counter-clockwise position insensitive dead zone in encoder counts' },
   { addr: 28, name: 'Protection Current', bytes: 2, access: 'RW', area: 'EEPROM', defaultVal: '0', range: '0–511 (×6.5 mA)', description: 'Overcurrent protection threshold. 0 = disabled.' },
   {
     addr: 30,
