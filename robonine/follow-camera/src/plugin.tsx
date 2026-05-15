@@ -9,6 +9,32 @@ interface Props {
 const MIN_DEPTH = 0.05
 const SIM_BALL_HIDDEN: [number, number, number] = [0, 0, 100]
 
+type Mat3 = [[number, number, number], [number, number, number], [number, number, number]]
+
+function rpyToMat3(rpy: [number, number, number]): Mat3 {
+  const [rx, ry, rz] = rpy
+  const cx = Math.cos(rx)
+  const sx = Math.sin(rx)
+  const cy = Math.cos(ry)
+  const sy = Math.sin(ry)
+  const cz = Math.cos(rz)
+  const sz = Math.sin(rz)
+
+  return [
+    [cy * cz, cz * sx * sy - cx * sz, cx * cz * sy + sx * sz],
+    [cy * sz, cx * cz + sx * sy * sz, cx * sy * sz - cz * sx],
+    [-sy, cy * sx, cx * cy],
+  ]
+}
+
+function mat3Mul(a: Mat3, b: Mat3): Mat3 {
+  return [
+    [a[0][0] * b[0][0] + a[0][1] * b[1][0] + a[0][2] * b[2][0], a[0][0] * b[0][1] + a[0][1] * b[1][1] + a[0][2] * b[2][1], a[0][0] * b[0][2] + a[0][1] * b[1][2] + a[0][2] * b[2][2]],
+    [a[1][0] * b[0][0] + a[1][1] * b[1][0] + a[1][2] * b[2][0], a[1][0] * b[0][1] + a[1][1] * b[1][1] + a[1][2] * b[2][1], a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2] * b[2][2]],
+    [a[2][0] * b[0][0] + a[2][1] * b[1][0] + a[2][2] * b[2][0], a[2][0] * b[0][1] + a[2][1] * b[1][1] + a[2][2] * b[2][1], a[2][0] * b[0][2] + a[2][1] * b[1][2] + a[2][2] * b[2][2]],
+  ]
+}
+
 function Crosshair({ x, y }: { x: number; y: number }) {
   const R = 28
   const G = 7
@@ -38,6 +64,7 @@ export function PluginRoot({ context }: Props) {
   const safetyShownRef = useRef(false)
   const cameraLinkRef = useRef('camera_virtual')
   const cameraOffsetRef = useRef<[number, number, number]>([0, 0, 0])
+  const cameraRpyRef = useRef<[number, number, number]>([0, 0, 0])
   const sortedJointNamesRef = useRef<string[]>([])
   const simModeRef = useRef(simMode)
   const worldViewRef = useRef<WorldViewApi>(null)
@@ -58,12 +85,12 @@ export function PluginRoot({ context }: Props) {
       .sort(([, a], [, b]) => a - b)
       .map(([name]) => name)
 
-    const fkNodes = (config as unknown as Record<string, unknown>).fkNodes as Array<{ linkName: string; offset?: [number, number, number] }> | undefined
-    const camNode = fkNodes?.find((n) => n.linkName.toLowerCase().includes('camera'))
+    const camDef = (config as unknown as Record<string, unknown>).camera as { parentLink: string; xyz: [number, number, number]; rpy: [number, number, number] } | undefined
 
-    if (camNode) {
-      cameraLinkRef.current = camNode.linkName
-      cameraOffsetRef.current = camNode.offset ?? [0, 0, 0]
+    if (camDef) {
+      cameraLinkRef.current = camDef.parentLink
+      cameraOffsetRef.current = camDef.xyz
+      cameraRpyRef.current = camDef.rpy
     }
   }, [context.robotConfig, t.noRobotConfig])
 
@@ -203,6 +230,7 @@ export function PluginRoot({ context }: Props) {
 
         const fkEff = await context.kinematics.forwardKinematics(angleMap)
         const R = fkCam.rotation
+        const finalR = mat3Mul(R, rpyToMat3(cameraRpyRef.current))
         const [cx, cy, cz] = applyLocalOffset(fkCam.position, R)
         const [ex, ey, ez] = fkEff.position
         const vw = vid?.videoWidth ?? 640
@@ -215,16 +243,16 @@ export function PluginRoot({ context }: Props) {
         const ryc = (v - ppy) / fy
         const rlen = Math.sqrt(rxc * rxc + ryc * ryc + 1)
         const nc = [rxc / rlen, ryc / rlen, 1 / rlen]
-        const rdx = R[0][0] * nc[0] + R[0][1] * nc[1] + R[0][2] * nc[2]
-        const rdy = R[1][0] * nc[0] + R[1][1] * nc[1] + R[1][2] * nc[2]
-        const rdz = R[2][0] * nc[0] + R[2][1] * nc[1] + R[2][2] * nc[2]
+        const rdx = finalR[0][0] * nc[0] + finalR[0][1] * nc[1] + finalR[0][2] * nc[2]
+        const rdy = finalR[1][0] * nc[0] + finalR[1][1] * nc[1] + finalR[1][2] * nc[2]
+        const rdz = finalR[2][0] * nc[0] + finalR[2][1] * nc[1] + finalR[2][2] * nc[2]
 
         // Depth = euclidean distance camera→end-effector (always positive, never tiny)
         const toEx = ex - cx
         const toEy = ey - cy
         const toEz = ez - cz
         const depth = Math.max(MIN_DEPTH, Math.sqrt(toEx * toEx + toEy * toEy + toEz * toEz))
-        const ikTarget: [number, number, number] = [ex + depth * rdx, ey + depth * rdy, ez + depth * rdz]
+        const ikTarget: [number, number, number] = [cx + depth * rdx, cy + depth * rdy, cz + depth * rdz]
 
         console.log(
           '[follow-camera] link:',
@@ -232,7 +260,7 @@ export function PluginRoot({ context }: Props) {
           'cam:',
           [cx, cy, cz].map((v) => v.toFixed(3)),
           'opt-axis:',
-          [R[0][2], R[1][2], R[2][2]].map((v) => v.toFixed(3)),
+          [finalR[0][2], finalR[1][2], finalR[2][2]].map((v) => v.toFixed(3)),
           'depth:',
           depth.toFixed(3),
           'ray:',
