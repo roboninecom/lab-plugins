@@ -32,7 +32,7 @@ export function PluginRoot({ context }: Props) {
   const [crosshairPos, setCrosshairPos] = useState<{ x: number; y: number } | null>(null)
   const [isTracking, setIsTracking] = useState(false)
   const [statusMsg, setStatusMsg] = useState<string | null>(null)
-  const [simMode, setSimMode] = useState(false)
+  const [simMode, setSimMode] = useState(true)
   const ikPendingRef = useRef(false)
   const lastPositionsRef = useRef<number[] | null>(null)
   const safetyShownRef = useRef(false)
