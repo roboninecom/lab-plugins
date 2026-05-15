@@ -24,7 +24,7 @@ export const translations: Record<string, T> = {
     scanning: 'Scanning for sensors…',
     noSensors: 'No force sensors were detected. Make sure a sensor is connected and try again.',
     scanAgain: 'Reconnect',
-    sensorLabel: (id) => `Sensor #${id}`,
+    sensorLabel: (id) => `Device ID=${id}`,
   },
   ru: {
     title: 'Датчик силы',
@@ -37,6 +37,6 @@ export const translations: Record<string, T> = {
     scanning: 'Поиск датчиков…',
     noSensors: 'Датчики силы не обнаружены. Убедитесь, что датчик подключён, и попробуйте снова.',
     scanAgain: 'Переподключить',
-    sensorLabel: (id) => `Датчик #${id}`,
+    sensorLabel: (id) => `ID устройства=${id}`,
   },
 }
