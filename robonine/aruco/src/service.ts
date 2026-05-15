@@ -51,8 +51,9 @@ export interface ArucoDetectOptions {
    */
   cameraIntrinsics?: CameraIntrinsics
   /**
-   * Camera pose in the URDF world frame.
-   * Obtain via `context.kinematics.forwardKinematics(jointAngles, 'camera_virtual')`.
+   * Actual camera optical-center pose in the URDF world frame.
+   * Compute by running FK to the camera parent link and then composing with the
+   * robot's CAMERA_DEFINITION xyz/rpy offset (see `applyCameraDefinition` in plugin.tsx).
    * When present, `pose.worldPosition` and `pose.worldRotation` are populated.
    */
   cameraPose?: FKResult

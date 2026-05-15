@@ -7,6 +7,44 @@ interface Props {
   context: PluginContext
 }
 
+type Mat3 = [[number, number, number], [number, number, number], [number, number, number]]
+
+function rpyToMat3(rpy: [number, number, number]): Mat3 {
+  const [rx, ry, rz] = rpy
+  const cx = Math.cos(rx)
+  const sx = Math.sin(rx)
+  const cy = Math.cos(ry)
+  const sy = Math.sin(ry)
+  const cz = Math.cos(rz)
+  const sz = Math.sin(rz)
+
+  return [
+    [cy * cz, cz * sx * sy - cx * sz, cx * cz * sy + sx * sz],
+    [cy * sz, cx * cz + sx * sy * sz, cx * sy * sz - cz * sx],
+    [-sy, cy * sx, cx * cy],
+  ]
+}
+
+function mat3Mul(a: Mat3, b: Mat3): Mat3 {
+  return [
+    [a[0][0] * b[0][0] + a[0][1] * b[1][0] + a[0][2] * b[2][0], a[0][0] * b[0][1] + a[0][1] * b[1][1] + a[0][2] * b[2][1], a[0][0] * b[0][2] + a[0][1] * b[1][2] + a[0][2] * b[2][2]],
+    [a[1][0] * b[0][0] + a[1][1] * b[1][0] + a[1][2] * b[2][0], a[1][0] * b[0][1] + a[1][1] * b[1][1] + a[1][2] * b[2][1], a[1][0] * b[0][2] + a[1][1] * b[1][2] + a[1][2] * b[2][2]],
+    [a[2][0] * b[0][0] + a[2][1] * b[1][0] + a[2][2] * b[2][0], a[2][0] * b[0][1] + a[2][1] * b[1][1] + a[2][2] * b[2][1], a[2][0] * b[0][2] + a[2][1] * b[1][2] + a[2][2] * b[2][2]],
+  ]
+}
+
+function applyCameraDefinition(fkPose: FKResult, camDef: { xyz: [number, number, number]; rpy: [number, number, number] }): FKResult {
+  const [ox, oy, oz] = camDef.xyz
+  const R = fkPose.rotation
+  const P = fkPose.position
+  const Rrpy = rpyToMat3(camDef.rpy)
+
+  return {
+    position: [P[0] + R[0][0] * ox + R[0][1] * oy + R[0][2] * oz, P[1] + R[1][0] * ox + R[1][1] * oy + R[1][2] * oz, P[2] + R[2][0] * ox + R[2][1] * oy + R[2][2] * oz],
+    rotation: mat3Mul(R, Rrpy),
+  }
+}
+
 // ── Pure canvas helpers ────────────────────────────────────────────────
 
 function drawAxes(
@@ -358,6 +396,8 @@ export function PluginRoot({ context }: Props) {
 
       const { jointServoId, servoNeutral, encoderToJoint } = pluginCtx.robotConfig
 
+      const camDef = (pluginCtx.robotConfig as unknown as Record<string, unknown>).camera as { parentLink: string; xyz: [number, number, number]; rpy: [number, number, number] } | undefined
+
       // Read each servo individually so a missing servo doesn't abort the whole
       // read — fall back to its neutral encoder position instead.
       ;(async () => {
@@ -374,7 +414,9 @@ export function PluginRoot({ context }: Props) {
           }
         }
 
-        return pluginCtx.kinematics.forwardKinematics(angles, 'camera_virtual')
+        const fkPose = await pluginCtx.kinematics.forwardKinematics(angles, camDef?.parentLink ?? 'camera_virtual')
+
+        return camDef ? applyCameraDefinition(fkPose, camDef) : fkPose
       })()
         .then((pose) => {
           cameraPoseRef.current = pose
