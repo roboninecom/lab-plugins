@@ -38,10 +38,19 @@ function applyCameraDefinition(fkPose: FKResult, camDef: { xyz: [number, number,
   const R = fkPose.rotation
   const P = fkPose.position
   const Rrpy = rpyToMat3(camDef.rpy)
+  // CAMERA_DEFINITION.rpy was calibrated against the 3D frustum viewer, which only
+  // verifies the optical axis direction (+Z). The Y column must be negated so that
+  // camera +Y (down in image) maps to world −Z (down), not +Z (up), giving correct
+  // world-Z sign when solvePnP tvec is used directly.
+  const flipY: Mat3 = [
+    [1, 0, 0],
+    [0, -1, 0],
+    [0, 0, 1],
+  ]
 
   return {
     position: [P[0] + R[0][0] * ox + R[0][1] * oy + R[0][2] * oz, P[1] + R[1][0] * ox + R[1][1] * oy + R[1][2] * oz, P[2] + R[2][0] * ox + R[2][1] * oy + R[2][2] * oz],
-    rotation: mat3Mul(R, Rrpy),
+    rotation: mat3Mul(mat3Mul(R, Rrpy), flipY),
   }
 }
 
@@ -476,6 +485,12 @@ export function PluginRoot({ context }: Props) {
                 <div>cam x: {camPose.position[0].toFixed(3)} m</div>
                 <div>cam y: {camPose.position[1].toFixed(3)} m</div>
                 <div>cam z: {camPose.position[2].toFixed(3)} m</div>
+                <div>
+                  fwd: {camPose.rotation[0][2].toFixed(2)} {camPose.rotation[1][2].toFixed(2)} {camPose.rotation[2][2].toFixed(2)}
+                </div>
+                <div>
+                  dn:&nbsp; {camPose.rotation[0][1].toFixed(2)} {camPose.rotation[1][1].toFixed(2)} {camPose.rotation[2][1].toFixed(2)}
+                </div>
               </div>
             ) : (
               <span className="text-slate-400">cam: —</span>
@@ -489,9 +504,15 @@ export function PluginRoot({ context }: Props) {
         <h2 className="hidden lg:block text-lg font-semibold">{t.title}</h2>
 
         {/* Status */}
-        <div className="rounded-lg border bg-card p-4 flex items-center gap-3">
-          <span className={['w-2.5 h-2.5 rounded-full shrink-0', arucoError ? 'bg-destructive' : arucoReady ? 'bg-green-500' : 'bg-muted-foreground animate-pulse'].join(' ')} />
-          <span className="text-sm font-medium">{arucoError ? t.statusError : arucoReady ? t.statusReady : t.statusLoading}</span>
+        <div className="rounded-lg border bg-card p-4 space-y-2">
+          <div className="flex items-center gap-3">
+            <span className={['w-2.5 h-2.5 rounded-full shrink-0', arucoError ? 'bg-destructive' : arucoReady ? 'bg-green-500' : 'bg-muted-foreground animate-pulse'].join(' ')} />
+            <span className="text-sm font-medium">{arucoError ? t.statusError : arucoReady ? t.statusReady : t.statusLoading}</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className={['w-2.5 h-2.5 rounded-full shrink-0', context.cameraCalibration ? 'bg-green-500' : 'bg-yellow-500'].join(' ')} />
+            <span className="text-sm font-medium">{context.cameraCalibration ? t.intrinsicsCalibrated : t.intrinsicsEstimated}</span>
+          </div>
         </div>
 
         {/* Camera selector */}

@@ -17,6 +17,8 @@ interface Translations {
   remote: string
   worldFrame: string
   cameraFrame: string
+  intrinsicsCalibrated: string
+  intrinsicsEstimated: string
 }
 
 export const translations: Record<string, Translations> = {
@@ -39,6 +41,8 @@ export const translations: Record<string, Translations> = {
     remote: 'remote',
     worldFrame: 'relative to base',
     cameraFrame: 'relative to cam.',
+    intrinsicsCalibrated: 'Camera calibrated',
+    intrinsicsEstimated: 'No calibration (depth inaccurate)',
   },
   ru: {
     title: 'Детектор ArUco',
@@ -59,5 +63,7 @@ export const translations: Record<string, Translations> = {
     remote: 'удалённая',
     worldFrame: 'отн. базы',
     cameraFrame: 'отн. камеры',
+    intrinsicsCalibrated: 'Камера откалибрована',
+    intrinsicsEstimated: 'Нет калибровки (глубина неточная)',
   },
 }
