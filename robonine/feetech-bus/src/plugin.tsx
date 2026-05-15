@@ -326,15 +326,29 @@ export function PluginRoot({ context }: Props) {
           {scanning ? copies.scanning : copies.scan}
         </Button>
 
-        <Button size="sm" onClick={readAll} disabled={!connected || reading || scanning}>
+        {/* desktop: Read all sits next to Scan */}
+        <Button className="hidden sm:inline-flex" size="sm" onClick={readAll} disabled={!connected || reading || scanning}>
           {reading ? copies.reading : copies.readAll}
         </Button>
 
-        {foundIds !== null && <span className="text-xs text-muted-foreground">{foundIds.length > 0 ? `${copies.scanFound}: ${foundIds.join(', ')}` : copies.scanNone}</span>}
+        {foundIds !== null && <span className="hidden sm:inline text-xs text-muted-foreground">{foundIds.length > 0 ? `${copies.scanFound}: ${foundIds.join(', ')}` : copies.scanNone}</span>}
 
-        <div className="relative ml-auto">
+        {/* desktop: Search pushed to the right */}
+        <div className="hidden sm:block relative ml-auto">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
           <Input value={filter} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilter(e.target.value)} placeholder={copies.filterPlaceholder} className="h-8 w-64 text-sm pl-7" />
+        </div>
+
+        {/* mobile: Read all + Search share one full-width row */}
+        <div className="flex sm:hidden items-center gap-2 w-full">
+          <Button size="sm" onClick={readAll} disabled={!connected || reading || scanning}>
+            {reading ? copies.reading : copies.readAll}
+          </Button>
+          {foundIds !== null && <span className="text-xs text-muted-foreground">{foundIds.length > 0 ? `${copies.scanFound}: ${foundIds.join(', ')}` : copies.scanNone}</span>}
+          <div className="relative flex-1">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <Input value={filter} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilter(e.target.value)} placeholder={copies.filterPlaceholder} className="h-8 w-full text-sm pl-7" />
+          </div>
         </div>
       </div>
 
