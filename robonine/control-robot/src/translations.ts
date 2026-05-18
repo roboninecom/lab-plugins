@@ -11,6 +11,7 @@ export const translations = {
     goHome: 'Go home',
     node: 'Node',
     computePosition: 'Compute position',
+    debounce: 'Debounce',
   },
   ru: {
     title: 'Управление роботом',
@@ -24,5 +25,6 @@ export const translations = {
     goHome: 'Домой',
     node: 'Узел',
     computePosition: 'Вычислить позицию',
+    debounce: 'Дебаунс',
   },
 } satisfies Record<string, Record<string, string>>

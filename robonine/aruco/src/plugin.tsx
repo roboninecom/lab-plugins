@@ -38,6 +38,7 @@ function applyCameraDefinition(fkPose: FKResult, camDef: { xyz: [number, number,
   const R = fkPose.rotation
   const P = fkPose.position
   const Rrpy = rpyToMat3(camDef.rpy)
+
   // CAMERA_DEFINITION.rpy was calibrated against the 3D frustum viewer, which only
   // verifies the optical axis direction (+Z). The Y column must be negated so that
   // camera +Y (down in image) maps to world −Z (down), not +Z (up), giving correct

@@ -16,6 +16,8 @@ export function PluginRoot({ context }: Props) {
   const [fkResult, setFkResult] = useState<{ node: string; label: string; x: number; y: number; z: number } | null>(null)
   const isDraggingRef = useRef(false)
   const safetyShownRef = useRef(false)
+  const [debounceEnabled, setDebounceEnabled] = useState(false)
+  const debounceTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const extraNodes = useMemo(() => (context.robotConfig?.fkNodes ?? []).map((n) => ({ name: n.linkName, label: context.localize(n.label) })), [context.robotConfig?.fkNodes, context.locale])
 
   useEffect(() => {
@@ -63,9 +65,18 @@ export function PluginRoot({ context }: Props) {
     viewRef.current?.setJoint(name, value)
 
     if (servoId !== undefined && context.connection.connected) {
-      const raw = context.robotConfig?.jointToEncoder(servoId, value) ?? 0
+      const send = () => {
+        const raw = context.robotConfig?.jointToEncoder(servoId, value) ?? 0
 
-      void context.servo.setPosition(servoId, Math.max(0, Math.min(4095, raw)))
+        void context.servo.setPosition(servoId, Math.max(0, Math.min(4095, raw)))
+      }
+
+      if (debounceEnabled) {
+        clearTimeout(debounceTimersRef.current[name])
+        debounceTimersRef.current[name] = setTimeout(send, 200)
+      } else {
+        send()
+      }
     }
   }
 
@@ -171,6 +182,11 @@ export function PluginRoot({ context }: Props) {
       </div>
 
       <div className="space-y-4 lg:w-[280px] lg:max-w-[280px] lg:shrink-0">
+        <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+          <input type="checkbox" checked={debounceEnabled} onChange={(e) => setDebounceEnabled(e.target.checked)} className="accent-primary w-4 h-4" />
+          {t.debounce}
+        </label>
+
         {[...joints].reverse().map((j) => (
           <div key={j.name} className="space-y-1">
             <div className="flex justify-between text-sm">
