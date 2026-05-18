@@ -13,5 +13,5 @@ export const manifest: PluginManifest = {
     ru: 'Проведите каждый сустав через весь диапазон движения для калибровки пределов энкодера.',
   },
   icon: 'crosshair',
-  scopes: ['robot.read', 'robot.calibration', 'robot.local'],
+  scopes: ['robot.read', 'robot.calibration', 'robot.local', 'robot.saved'],
 }
