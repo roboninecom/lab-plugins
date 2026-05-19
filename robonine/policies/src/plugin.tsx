@@ -51,6 +51,93 @@ interface ConsoleEntry {
   isError?: boolean
 }
 
+// ── ZIP parser (minimal, EOCD-based) ─────────────────────────────────────────
+
+async function decompressDeflateRaw(data: Uint8Array): Promise<ArrayBuffer> {
+  const ds = new DecompressionStream('deflate-raw')
+  const writer = ds.writable.getWriter()
+  const reader = ds.readable.getReader()
+  const chunks: Uint8Array[] = []
+  let off = 0
+
+  writer.write(data as unknown as Uint8Array<ArrayBuffer>)
+  writer.close()
+
+  while (true) {
+    const { done, value } = await reader.read()
+
+    if (done) {
+      break
+    }
+    chunks.push(value)
+  }
+
+  const totalLen = chunks.reduce((s, c) => s + c.length, 0)
+  const out = new Uint8Array(totalLen)
+
+  for (const c of chunks) {
+    out.set(c, off)
+    off += c.length
+  }
+
+  return out.buffer as ArrayBuffer
+}
+
+async function parseZip(buffer: ArrayBuffer): Promise<Map<string, ArrayBuffer>> {
+  const view = new DataView(buffer)
+  const bytes = new Uint8Array(buffer)
+  const files = new Map<string, ArrayBuffer>()
+
+  // Locate End of Central Directory record
+  let eocdOffset = -1
+
+  for (let i = buffer.byteLength - 22; i >= 0; i--) {
+    if (view.getUint32(i, true) === 0x06054b50) {
+      eocdOffset = i
+      break
+    }
+  }
+  if (eocdOffset < 0) {
+    throw new Error('no EOCD')
+  }
+
+  const cdOffset = view.getUint32(eocdOffset + 16, true)
+  const totalRecords = view.getUint16(eocdOffset + 10, true)
+  let cdPos = cdOffset
+
+  for (let i = 0; i < totalRecords; i++) {
+    const method = view.getUint16(cdPos + 10, true)
+    const compressedSize = view.getUint32(cdPos + 20, true)
+    const fnLen = view.getUint16(cdPos + 28, true)
+    const extraLen = view.getUint16(cdPos + 30, true)
+    const commentLen = view.getUint16(cdPos + 32, true)
+    const localOffset = view.getUint32(cdPos + 42, true)
+
+    if (view.getUint32(cdPos, true) !== 0x02014b50) {
+      break
+    }
+
+    const fileName = new TextDecoder().decode(bytes.slice(cdPos + 46, cdPos + 46 + fnLen))
+
+    if (!fileName.endsWith('/')) {
+      const localFnLen = view.getUint16(localOffset + 26, true)
+      const localExtraLen = view.getUint16(localOffset + 28, true)
+      const dataStart = localOffset + 30 + localFnLen + localExtraLen
+      const compData = buffer.slice(dataStart, dataStart + compressedSize)
+
+      if (method === 0) {
+        files.set(fileName, compData)
+      } else if (method === 8) {
+        files.set(fileName, await decompressDeflateRaw(new Uint8Array(compData)))
+      }
+    }
+
+    cdPos += 46 + fnLen + extraLen + commentLen
+  }
+
+  return files
+}
+
 // ── Safetensors parser ────────────────────────────────────────────────────────
 
 function parseSafetensors(buffer: ArrayBuffer): Map<string, Float32Array> {
@@ -347,11 +434,11 @@ export function PluginRoot({ context }: Props) {
   const [inferState, setInferState] = useState<InferState>('idle')
   const [schemaText, setSchemaText] = useState('')
   const [weightsBuffer, setWeightsBuffer] = useState<ArrayBuffer | null>(null)
-  const [weightsName, setWeightsName] = useState('')
+  const [policyName, setPolicyName] = useState('')
   const [consoleLog, setConsoleLog] = useState<ConsoleEntry[]>([])
   const inferStopRef = useRef<(() => void) | null>(null)
   const consoleEndRef = useRef<HTMLDivElement>(null)
-  const weightsInputRef = useRef<HTMLInputElement>(null)
+  const policyInputRef = useRef<HTMLInputElement>(null)
 
   // Joint order for setJointPositions (sorted by servo ID ascending)
   const jointOrder = useMemo(
@@ -558,17 +645,46 @@ export function PluginRoot({ context }: Props) {
     setEpisodes((prev) => prev.filter((e) => e.id !== id))
   }, [])
 
-  const handleWeightsFile = useCallback((file: File) => {
-    const reader = new FileReader()
+  const handlePolicyFile = useCallback(
+    async (file: File) => {
+      let entries: Map<string, ArrayBuffer>
 
-    reader.onload = () => {
-      setWeightsBuffer(reader.result as ArrayBuffer)
-      setWeightsName(file.name)
-    }
-    reader.readAsArrayBuffer(file)
-  }, [])
+      try {
+        entries = await parseZip(await file.arrayBuffer())
+      } catch {
+        context.toast.error(copies.inferPolicyInvalid)
+
+        return
+      }
+
+      const schemaKey = [...entries.keys()].find((k) => k.endsWith('schema.json'))
+      const weightsKey = [...entries.keys()].find((k) => k.endsWith('weights.safetensors'))
+
+      if (!schemaKey || !weightsKey) {
+        context.toast.error(copies.inferPolicyInvalid)
+
+        return
+      }
+
+      setSchemaText(new TextDecoder().decode(entries.get(schemaKey)!))
+      setWeightsBuffer(entries.get(weightsKey)!)
+      setPolicyName(file.name)
+    },
+    [copies.inferPolicyInvalid, context.toast],
+  )
 
   const inferReady = schemaText.trim() !== '' && weightsBuffer !== null
+
+  const parsedSchema = useMemo(() => {
+    if (!schemaText.trim()) {
+      return null
+    }
+    try {
+      return JSON.parse(schemaText) as FeatureSchema
+    } catch {
+      return null
+    }
+  }, [schemaText])
 
   const handleInferStart = useCallback(async () => {
     let schema: FeatureSchema
@@ -779,7 +895,7 @@ export function PluginRoot({ context }: Props) {
               <CameraView
                 ref={cameraViewRef}
                 stream={selectedCamera?.stream}
-                className="w-full min-h-[50dvh]"
+                className="w-full aspect-video max-h-[50dvh]"
                 noCamera={
                   <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
                     {context.cameras.length === 0 ? copies.noCameraAvailable : copies.noCameraSelected}
@@ -919,39 +1035,53 @@ export function PluginRoot({ context }: Props) {
           {/* Right panel — model config + controls */}
           <div className="w-64 shrink-0 border-l pl-6 overflow-y-auto space-y-5 pb-6">
             <div className="space-y-2">
-              <label className="text-sm font-medium">{copies.inferSchema}</label>
-              <textarea
-                value={schemaText}
-                onChange={(e) => setSchemaText(e.target.value)}
-                placeholder={copies.inferSchemaPlaceholder}
-                disabled={inferState === 'running'}
-                rows={6}
-                className="w-full rounded-md border bg-background px-3 py-2 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 resize-none"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">{copies.inferWeights}</label>
               <input
-                ref={weightsInputRef}
+                ref={policyInputRef}
                 type="file"
-                accept=".safetensors"
+                accept=".policy"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
 
                   if (file) {
-                    handleWeightsFile(file)
+                    handlePolicyFile(file)
                   }
                   e.target.value = ''
                 }}
               />
-              <Button variant="outline" size="sm" className="w-full" disabled={inferState === 'running'} onClick={() => weightsInputRef.current?.click()}>
+              <Button variant="outline" size="sm" className="w-full" disabled={inferState === 'running'} onClick={() => policyInputRef.current?.click()}>
                 <Upload className="w-4 h-4 mr-1.5" />
-                {copies.inferLoadWeights}
+                {copies.inferUploadPolicy}
               </Button>
-              {weightsName && <p className="text-xs text-muted-foreground truncate">{weightsName}</p>}
+              {policyName && <p className="text-xs text-muted-foreground truncate">{policyName}</p>}
             </div>
+
+            {parsedSchema && (
+              <div className="space-y-4">
+                {parsedSchema.joint_names.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{copies.motors}</p>
+                    {parsedSchema.joint_names.map((name) => (
+                      <label key={name} className="flex items-center gap-2 text-sm select-none">
+                        <Checkbox checked disabled />
+                        <span className="truncate min-w-0">{name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+                {parsedSchema.sensor_names?.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{copies.sensors}</p>
+                    {parsedSchema.sensor_names.map((name) => (
+                      <label key={name} className="flex items-center gap-2 text-sm select-none">
+                        <Checkbox checked disabled />
+                        <span className="truncate min-w-0">{name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {inferState === 'idle' ? (
               <Button className="w-full" onClick={handleInferStart} disabled={!inferReady}>

@@ -3,12 +3,12 @@ import type { PluginManifest } from '@robonine/plugin-sdk'
 export const manifest: PluginManifest = {
   sdkVersion: '1',
   vendor: 'robonine',
-  slug: 'record-episodes',
+  slug: 'policies',
   name: {
-    en: 'Record episodes',
+    en: 'Policies',
   },
   description: {
-    en: 'Record robot demonstrations (joint states + camera) for VLA model training.',
+    en: 'Record robot demonstrations (joint states + camera) for policy training.',
   },
   icon: 'videotape',
   scopes: ['robot.read', 'robot.control', 'camera.read', 'user.auth'],
