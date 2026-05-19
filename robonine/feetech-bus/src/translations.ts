@@ -47,7 +47,7 @@ export interface Copies {
 
 export const translations: Record<string, Copies> = {
   en: {
-    title: 'Feetech Bus',
+    title: 'Feetech bus',
     description: 'Inspect and edit raw Feetech STS servo registers',
     servoId: 'Servo ID',
     scan: 'Scan bus',
@@ -93,7 +93,7 @@ export const translations: Record<string, Copies> = {
     clickToEdit: 'click to edit',
   },
   ru: {
-    title: 'Feetech Bus',
+    title: 'Feetech bus',
     description: 'Просмотр и редактирование регистров сервоприводов Feetech STS',
     servoId: 'ID сервопривода',
     scan: 'Сканировать шину',

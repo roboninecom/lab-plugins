@@ -5,7 +5,7 @@ export const manifest: PluginManifest = {
   vendor: 'robonine',
   slug: 'feetech-bus',
   name: {
-    en: 'Feetech Bus',
+    en: 'Feetech bus',
   },
   description: {
     en: 'Inspect and edit raw Feetech STS servo registers over the live bus connection.',
