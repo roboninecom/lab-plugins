@@ -673,7 +673,7 @@ export function PluginRoot({ context }: Props) {
     [copies.inferPolicyInvalid, context.toast],
   )
 
-  const inferReady = schemaText.trim() !== '' && weightsBuffer !== null
+  const inferReady = schemaText.trim() !== '' && weightsBuffer !== null && selectedCameraId !== null
 
   const parsedSchema = useMemo(() => {
     if (!schemaText.trim()) {
@@ -1084,10 +1084,13 @@ export function PluginRoot({ context }: Props) {
             )}
 
             {inferState === 'idle' ? (
-              <Button className="w-full" onClick={handleInferStart} disabled={!inferReady}>
-                <Play className="w-4 h-4 mr-2" />
-                {copies.inferStart}
-              </Button>
+              <>
+                <Button className="w-full" onClick={handleInferStart} disabled={!inferReady}>
+                  <Play className="w-4 h-4 mr-2" />
+                  {copies.inferStart}
+                </Button>
+                {!selectedCameraId && schemaText.trim() !== '' && weightsBuffer !== null && <p className="text-xs text-muted-foreground">{copies.inferNoCameraConnected}</p>}
+              </>
             ) : (
               <Button variant="destructive" className="w-full" onClick={handleInferStop}>
                 <Square className="w-4 h-4 mr-2" />
