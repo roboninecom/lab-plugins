@@ -41,6 +41,7 @@ export const translations = {
     inferPolicyInvalid: 'Could not load policy file. Make sure it contains schema.json and weights.safetensors.',
     inferSchemaInvalid: 'Could not parse schema JSON.',
     inferWeightsInvalid: 'Could not parse weights file.',
+    goHome: 'Go home',
   },
   ru: {
     title: 'Политики',
@@ -84,5 +85,6 @@ export const translations = {
     inferPolicyInvalid: 'Не удалось загрузить файл политики. Убедитесь, что он содержит schema.json и weights.safetensors.',
     inferSchemaInvalid: 'Не удалось разобрать schema JSON.',
     inferWeightsInvalid: 'Не удалось разобрать файл весов.',
+    goHome: 'На базу',
   },
 } satisfies Record<string, Record<string, string>>

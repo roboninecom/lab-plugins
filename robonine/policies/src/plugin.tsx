@@ -32,6 +32,11 @@ type ViewState = 'idle' | 'recording' | 'labeling' | 'motor-error'
 type Tab = 'record' | 'inference'
 type InferState = 'idle' | 'running'
 
+interface NormStats {
+  mean: number[]
+  std: number[]
+}
+
 interface FeatureSchema {
   version: number
   joint_names: string[]
@@ -39,10 +44,13 @@ interface FeatureSchema {
   use_image: boolean
   image_size: number
   image_feature_dim: number
+  cnn_base_channels?: number
+  use_gap?: boolean
   input_dim: number
   output_dim: number
   hidden_dim: number
   num_layers: number
+  norm_stats?: NormStats
 }
 
 interface ConsoleEntry {
@@ -267,10 +275,11 @@ function captureImageChw(video: HTMLVideoElement, size: number): Float32Array | 
 // ── Full forward pass ─────────────────────────────────────────────────────────
 
 function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>, joints: Record<string, number>, video: HTMLVideoElement | null): Record<string, number> | null {
-  const jointVec = new Float32Array(schema.joint_names.length)
+  const n = schema.joint_names.length
+  const jointVec = new Float32Array(n)
   const result: Record<string, number> = {}
 
-  for (let i = 0; i < schema.joint_names.length; i++) {
+  for (let i = 0; i < n; i++) {
     const v = joints[schema.joint_names[i]]
 
     if (v === undefined) {
@@ -284,25 +293,44 @@ function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>,
   if (schema.use_image) {
     const imageChw = video ? captureImageChw(video, schema.image_size) : null
     const s = schema.image_size
+    const ch1 = schema.cnn_base_channels ?? 16
+    const ch2 = ch1 * 2
+    let pooled: Float32Array
 
     if (!imageChw) {
       return null
     }
-    let x = conv2dForward(imageChw, weights.get('cnn.conv1.weight')!, weights.get('cnn.conv1.bias')!, 3, s, s, 16, 3, 2, 1)
+
+    let x = conv2dForward(imageChw, weights.get('cnn.conv1.weight')!, weights.get('cnn.conv1.bias')!, 3, s, s, ch1, 3, 2, 1)
 
     x = relu(x)
 
     const s1 = Math.floor(s / 2)
 
-    x = conv2dForward(x, weights.get('cnn.conv2.weight')!, weights.get('cnn.conv2.bias')!, 16, s1, s1, 32, 3, 2, 1)
+    x = conv2dForward(x, weights.get('cnn.conv2.weight')!, weights.get('cnn.conv2.bias')!, ch1, s1, s1, ch2, 3, 2, 1)
     x = relu(x)
 
     const s2 = Math.floor(s1 / 2)
 
-    x = conv2dForward(x, weights.get('cnn.conv3.weight')!, weights.get('cnn.conv3.bias')!, 32, s2, s2, 32, 3, 2, 1)
+    x = conv2dForward(x, weights.get('cnn.conv3.weight')!, weights.get('cnn.conv3.bias')!, ch2, s2, s2, ch2, 3, 2, 1)
     x = relu(x)
+    if (schema.use_gap) {
+      const s3 = Math.floor(s2 / 2)
 
-    const imgFeatures = linearForward(x, weights.get('cnn.fc.weight')!, weights.get('cnn.fc.bias')!)
+      pooled = new Float32Array(ch2)
+      for (let c = 0; c < ch2; c++) {
+        let sum = 0
+
+        for (let i = 0; i < s3 * s3; i++) {
+          sum += x[c * s3 * s3 + i]
+        }
+        pooled[c] = sum / (s3 * s3)
+      }
+    } else {
+      pooled = x
+    }
+
+    const imgFeatures = linearForward(pooled, weights.get('cnn.fc.weight')!, weights.get('cnn.fc.bias')!)
 
     // model concatenates [img_features, joints]
     input = new Float32Array(schema.input_dim)
@@ -319,8 +347,13 @@ function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>,
 
   const out = linearForward(h, weights.get('out.weight')!, weights.get('out.bias')!)
 
-  for (let i = 0; i < schema.output_dim; i++) {
-    result[schema.joint_names[i]] = parseFloat(out[i].toFixed(4))
+  for (let i = 0; i < n; i++) {
+    let v = out[i]
+
+    if (schema.norm_stats) {
+      v = v * schema.norm_stats.std[i] + schema.norm_stats.mean[i]
+    }
+    result[schema.joint_names[i]] = parseFloat(v.toFixed(4))
   }
 
   return result
@@ -519,11 +552,28 @@ export function PluginRoot({ context }: Props) {
     consoleEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [consoleLog])
 
-  const handleStart = useCallback(() => {
+  const handleHome = useCallback(() => {
+    const config = robot.robotConfig
+
+    if (!config || !robot.connection.connected) {
+      return
+    }
+
+    const positions = Object.entries(config.jointServoId).map(([, id]) => ({
+      id,
+      position: Math.max(0, Math.min(4095, config.servoNeutral[id] ?? 2048)),
+    }))
+
+    void servoRef.current.syncSetPositions(positions)
+  }, [robot.robotConfig, robot.connection.connected])
+
+  const handleStart = useCallback(async () => {
     const currentSensorDefs = sensorDefs
     const currentExcluded = excluded
     let seq = 0
     let running = true
+
+    await servoRef.current.disableTorque()
 
     framesRef.current = []
 
@@ -989,6 +1039,10 @@ export function PluginRoot({ context }: Props) {
                   ))}
                 </div>
               )}
+
+              <Button variant="outline" className="w-full" disabled={view === 'recording'} onClick={handleHome}>
+                {copies.goHome}
+              </Button>
             </div>
           )}
         </div>

@@ -11,5 +11,5 @@ export const manifest: PluginManifest = {
     en: 'Record robot demonstrations (joint states + camera) for policy training.',
   },
   icon: 'videotape',
-  scopes: ['robot.read', 'robot.control', 'camera.read', 'user.auth'],
+  scopes: ['robot.read', 'robot.control', 'robot.calibration', 'camera.read', 'user.auth'],
 }
