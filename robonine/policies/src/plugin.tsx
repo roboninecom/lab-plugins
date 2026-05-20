@@ -174,14 +174,12 @@ function parseSafetensors(buffer: ArrayBuffer): Map<string, Float32Array> {
 
 // ── Neural net primitives ─────────────────────────────────────────────────────
 
-function relu(x: Float32Array): Float32Array {
-  const out = new Float32Array(x.length)
-
+function reluInPlace(x: Float32Array): void {
   for (let i = 0; i < x.length; i++) {
-    out[i] = x[i] > 0 ? x[i] : 0
+    if (x[i] < 0) {
+      x[i] = 0
+    }
   }
-
-  return out
 }
 
 function linearForward(x: Float32Array, weight: Float32Array, bias: Float32Array): Float32Array {
@@ -249,19 +247,21 @@ function conv2dForward(
 
 // ── Image capture → CHW float32 ───────────────────────────────────────────────
 
-function captureImageChw(video: HTMLVideoElement, size: number): Float32Array | null {
-  const canvas = document.createElement('canvas')
+function captureImageChw(video: HTMLVideoElement, size: number, canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): Float32Array | null {
   const out = new Float32Array(3 * size * size)
 
   if (video.readyState < 2) {
     return null
   }
 
-  canvas.width = size
-  canvas.height = size
-  canvas.getContext('2d')!.drawImage(video, 0, 0, size, size)
+  if (canvas.width !== size || canvas.height !== size) {
+    canvas.width = size
+    canvas.height = size
+  }
+  ctx.drawImage(video, 0, 0, size, size)
 
-  const pixels = canvas.getContext('2d')!.getImageData(0, 0, size, size).data
+  // eslint-disable-next-line local/decls-on-top
+  const pixels = ctx.getImageData(0, 0, size, size).data
 
   for (let c = 0; c < 3; c++) {
     for (let i = 0; i < size * size; i++) {
@@ -274,7 +274,14 @@ function captureImageChw(video: HTMLVideoElement, size: number): Float32Array | 
 
 // ── Full forward pass ─────────────────────────────────────────────────────────
 
-function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>, joints: Record<string, number>, video: HTMLVideoElement | null): Record<string, number> | null {
+function runInference(
+  schema: FeatureSchema,
+  weights: Map<string, Float32Array>,
+  joints: Record<string, number>,
+  video: HTMLVideoElement | null,
+  captureCanvas: HTMLCanvasElement,
+  captureCtx: CanvasRenderingContext2D,
+): Record<string, number> | null {
   const n = schema.joint_names.length
   const jointVec = new Float32Array(n)
   const result: Record<string, number> = {}
@@ -291,7 +298,7 @@ function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>,
   let input: Float32Array = jointVec
 
   if (schema.use_image) {
-    const imageChw = video ? captureImageChw(video, schema.image_size) : null
+    const imageChw = video ? captureImageChw(video, schema.image_size, captureCanvas, captureCtx) : null
     const s = schema.image_size
     const ch1 = schema.cnn_base_channels ?? 16
     const ch2 = ch1 * 2
@@ -303,17 +310,17 @@ function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>,
 
     let x = conv2dForward(imageChw, weights.get('cnn.conv1.weight')!, weights.get('cnn.conv1.bias')!, 3, s, s, ch1, 3, 2, 1)
 
-    x = relu(x)
+    reluInPlace(x)
 
     const s1 = Math.floor(s / 2)
 
     x = conv2dForward(x, weights.get('cnn.conv2.weight')!, weights.get('cnn.conv2.bias')!, ch1, s1, s1, ch2, 3, 2, 1)
-    x = relu(x)
+    reluInPlace(x)
 
     const s2 = Math.floor(s1 / 2)
 
     x = conv2dForward(x, weights.get('cnn.conv3.weight')!, weights.get('cnn.conv3.bias')!, ch2, s2, s2, ch2, 3, 2, 1)
-    x = relu(x)
+    reluInPlace(x)
     if (schema.use_gap) {
       const s3 = Math.floor(s2 / 2)
 
@@ -342,7 +349,7 @@ function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>,
 
   for (let i = 0; i < schema.num_layers; i++) {
     h = linearForward(h, weights.get(`h${i}.weight`)!, weights.get(`h${i}.bias`)!)
-    h = relu(h)
+    reluInPlace(h)
   }
 
   const out = linearForward(h, weights.get('out.weight')!, weights.get('out.bias')!)
@@ -353,7 +360,7 @@ function runInference(schema: FeatureSchema, weights: Map<string, Float32Array>,
     if (schema.norm_stats) {
       v = v * schema.norm_stats.std[i] + schema.norm_stats.mean[i]
     }
-    result[schema.joint_names[i]] = parseFloat(v.toFixed(4))
+    result[schema.joint_names[i]] = v
   }
 
   return result
@@ -746,6 +753,8 @@ export function PluginRoot({ context }: Props) {
       setConsoleLog((prev) => [...prev, { time: nowTimestamp(), line, isError }])
     }
 
+    const captureCanvas = document.createElement('canvas')
+
     try {
       schema = JSON.parse(schemaText) as FeatureSchema
     } catch {
@@ -773,6 +782,8 @@ export function PluginRoot({ context }: Props) {
     setConsoleLog([])
     setInferState('running')
 
+    const captureCtx = captureCanvas.getContext('2d')!
+
     const loop = async () => {
       while (running) {
         const statuses = await servoRef.current.readJointPositionsStatus()
@@ -790,7 +801,7 @@ export function PluginRoot({ context }: Props) {
           }
         }
 
-        const result = runInference(schema, weights, joints, video)
+        const result = runInference(schema, weights, joints, video, captureCanvas, captureCtx)
 
         if (!result) {
           addEntry('missing joints or image — check schema matches robot', true)
