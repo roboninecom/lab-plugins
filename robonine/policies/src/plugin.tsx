@@ -1,32 +1,13 @@
 import { Check, ChevronDown, Clapperboard, Download, Play, Square, Trash2, Upload, X } from 'lucide-react'
 import type { CameraViewHandle, PluginContext } from '@robonine/plugin-sdk'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { RecordingFrame, SavedEpisode } from './types'
+import { exportAsLerobotV3 } from './lerobotExport'
 import { translations } from './translations'
 import type { ReactNode } from 'react'
 
 interface Props {
   context: PluginContext
-}
-
-type RecordingFrame = {
-  seq: number
-  ts: number
-  joints: Record<string, number>
-  sensors?: Record<string, number>
-  image: string | null
-  imageWidth: number | null
-  imageHeight: number | null
-}
-
-type SavedEpisode = {
-  id: string
-  task: string
-  success: boolean | null
-  frameCount: number
-  source: string
-  robotModel: string
-  recordedAt: number
-  frames: RecordingFrame[]
 }
 
 type ViewState = 'idle' | 'recording' | 'labeling' | 'motor-error'
@@ -369,7 +350,7 @@ function runInference(
 
 // ── Recording helpers ─────────────────────────────────────────────────────────
 
-async function captureFrame(video: HTMLVideoElement): Promise<{ image: string; width: number; height: number } | null> {
+async function captureFrame(video: HTMLVideoElement, mirrorH: boolean, mirrorV: boolean): Promise<{ image: string; width: number; height: number } | null> {
   const w = 640
   const h = 480
   const canvas = document.createElement('canvas')
@@ -380,7 +361,18 @@ async function captureFrame(video: HTMLVideoElement): Promise<{ image: string; w
 
   canvas.width = w
   canvas.height = h
-  canvas.getContext('2d')!.drawImage(video, 0, 0, w, h)
+
+  const ctx = canvas.getContext('2d')!
+
+  if (mirrorH || mirrorV) {
+    ctx.save()
+    ctx.translate(mirrorH ? w : 0, mirrorV ? h : 0)
+    ctx.scale(mirrorH ? -1 : 1, mirrorV ? -1 : 1)
+    ctx.drawImage(video, 0, 0, w, h)
+    ctx.restore()
+  } else {
+    ctx.drawImage(video, 0, 0, w, h)
+  }
 
   return new Promise((resolve) => {
     canvas.toBlob(
@@ -410,7 +402,7 @@ function formatDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-type DownloadFormat = 'robonine'
+type DownloadFormat = 'robonine' | 'lerobot'
 
 function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
@@ -433,12 +425,16 @@ function saveAllEpisodesAsRobonine(episodes: SavedEpisode[]): void {
 function saveEpisodeAs(episode: SavedEpisode, format: DownloadFormat): void {
   if (format === 'robonine') {
     saveEpisodeAsRobonine(episode)
+  } else if (format === 'lerobot') {
+    void exportAsLerobotV3([episode])
   }
 }
 
 function saveAllEpisodesAs(episodes: SavedEpisode[], format: DownloadFormat): void {
   if (format === 'robonine') {
     saveAllEpisodesAsRobonine(episodes)
+  } else if (format === 'lerobot') {
+    void exportAsLerobotV3(episodes)
   }
 }
 
@@ -658,6 +654,8 @@ export function PluginRoot({ context }: Props) {
           let imageWidth: number | null = null
           let imageHeight: number | null = null
           let sensors: Record<string, number> | undefined
+          const mirrorH = cameraViewRef.current?.mirrorH ?? false
+          const mirrorV = cameraViewRef.current?.mirrorV ?? false
 
           if (missing.length > 0) {
             running = false
@@ -678,7 +676,7 @@ export function PluginRoot({ context }: Props) {
           const video = cameraViewRef.current?.video
 
           if (video) {
-            const captured = await captureFrame(video)
+            const captured = await captureFrame(video, mirrorH, mirrorV)
 
             if (captured) {
               image = captured.image
@@ -1035,7 +1033,10 @@ export function PluginRoot({ context }: Props) {
 
                 {episodes.length > 1 && (
                   <DownloadMenu
-                    items={[{ key: 'robonine', label: copies.formatRobonine }]}
+                    items={[
+                      { key: 'robonine', label: copies.formatRobonine },
+                      { key: 'lerobot', label: copies.formatLerobot },
+                    ]}
                     onSelect={(fmt) => saveAllEpisodesAs(episodes, fmt as DownloadFormat)}
                     trigger={(toggle) => (
                       <Button variant="outline" onClick={toggle}>
@@ -1070,7 +1071,10 @@ export function PluginRoot({ context }: Props) {
                         <TooltipProvider>
                           <Tooltip>
                             <DownloadMenu
-                              items={[{ key: 'robonine', label: copies.formatRobonine }]}
+                              items={[
+                                { key: 'robonine', label: copies.formatRobonine },
+                                { key: 'lerobot', label: copies.formatLerobot },
+                              ]}
                               onSelect={(fmt) => saveEpisodeAs(ep, fmt as DownloadFormat)}
                               trigger={(toggle) => (
                                 <TooltipTrigger asChild>
