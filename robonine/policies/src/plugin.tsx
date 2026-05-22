@@ -1,7 +1,8 @@
-import { Check, Clapperboard, Download, Play, Square, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, Clapperboard, Download, Play, Square, Trash2, Upload, X } from 'lucide-react'
 import type { CameraViewHandle, PluginContext } from '@robonine/plugin-sdk'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
+import type { ReactNode } from 'react'
 
 interface Props {
   context: PluginContext
@@ -409,26 +410,36 @@ function formatDuration(ms: number): string {
   return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`
 }
 
-function downloadAllJson(episodes: SavedEpisode[]): void {
-  const blob = new Blob([JSON.stringify(episodes, null, 2)], { type: 'application/json' })
+type DownloadFormat = 'robonine'
+
+function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
 
   a.href = url
-  a.download = `episodes_${Date.now()}.json`
+  a.download = filename
   a.click()
   URL.revokeObjectURL(url)
 }
 
-function downloadJson(episode: SavedEpisode): void {
-  const blob = new Blob([JSON.stringify(episode, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
+function saveEpisodeAsRobonine(episode: SavedEpisode): void {
+  triggerDownload(new Blob([JSON.stringify(episode, null, 2)], { type: 'application/json' }), `episode_${episode.id}.json`)
+}
 
-  a.href = url
-  a.download = `episode_${episode.id}.json`
-  a.click()
-  URL.revokeObjectURL(url)
+function saveAllEpisodesAsRobonine(episodes: SavedEpisode[]): void {
+  triggerDownload(new Blob([JSON.stringify(episodes, null, 2)], { type: 'application/json' }), `episodes_${Date.now()}.json`)
+}
+
+function saveEpisodeAs(episode: SavedEpisode, format: DownloadFormat): void {
+  if (format === 'robonine') {
+    saveEpisodeAsRobonine(episode)
+  }
+}
+
+function saveAllEpisodesAs(episodes: SavedEpisode[], format: DownloadFormat): void {
+  if (format === 'robonine') {
+    saveAllEpisodesAsRobonine(episodes)
+  }
 }
 
 function nowTimestamp(): string {
@@ -445,6 +456,58 @@ function formatAction(action: Record<string, number>): string {
   return Object.entries(action)
     .map(([k, v]) => `${k}: ${v.toFixed(4)}`)
     .join('  ')
+}
+
+// ── Download dropdown ─────────────────────────────────────────────────────────
+
+interface DownloadMenuProps {
+  items: { key: string; label: string }[]
+  onSelect: (key: string) => void
+  trigger: (toggle: () => void, isOpen: boolean) => ReactNode
+  align?: 'left' | 'right'
+}
+
+function DownloadMenu({ items, onSelect, trigger, align = 'right' }: DownloadMenuProps) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+
+    if (!open) {
+      return
+    }
+
+    document.addEventListener('mousedown', handler)
+
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  return (
+    <div ref={ref} className="relative inline-block">
+      {trigger(() => setOpen((o) => !o), open)}
+      {open && (
+        <div className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-full mt-1 min-w-[10rem] rounded-md border bg-popover shadow-md z-50 overflow-hidden`}>
+          {items.map((item) => (
+            <button
+              key={item.key}
+              className="w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors whitespace-nowrap"
+              onClick={() => {
+                onSelect(item.key)
+                setOpen(false)
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -971,10 +1034,17 @@ export function PluginRoot({ context }: Props) {
                 </Button>
 
                 {episodes.length > 1 && (
-                  <Button variant="outline" onClick={() => downloadAllJson(episodes)}>
-                    <Download className="w-4 h-4 mr-2" />
-                    {copies.downloadAll}
-                  </Button>
+                  <DownloadMenu
+                    items={[{ key: 'robonine', label: copies.formatRobonine }]}
+                    onSelect={(fmt) => saveAllEpisodesAs(episodes, fmt as DownloadFormat)}
+                    trigger={(toggle) => (
+                      <Button variant="outline" onClick={toggle}>
+                        <Download className="w-4 h-4 mr-2" />
+                        {copies.downloadAll}
+                        <ChevronDown className="w-3 h-3 ml-2" />
+                      </Button>
+                    )}
+                  />
                 )}
               </div>
 
@@ -999,13 +1069,22 @@ export function PluginRoot({ context }: Props) {
                         </span>
                         <TooltipProvider>
                           <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button onClick={() => downloadJson(ep)} className="shrink-0 text-muted-foreground hover:text-foreground transition-colors" aria-label={copies.download}>
-                                <Download className="w-4 h-4" />
-                              </button>
-                            </TooltipTrigger>
+                            <DownloadMenu
+                              items={[{ key: 'robonine', label: copies.formatRobonine }]}
+                              onSelect={(fmt) => saveEpisodeAs(ep, fmt as DownloadFormat)}
+                              trigger={(toggle) => (
+                                <TooltipTrigger asChild>
+                                  <button onClick={toggle} className="shrink-0 flex items-center gap-0.5 text-muted-foreground hover:text-foreground transition-colors" aria-label={copies.download}>
+                                    <Download className="w-4 h-4" />
+                                    <ChevronDown className="w-3 h-3" />
+                                  </button>
+                                </TooltipTrigger>
+                              )}
+                            />
                             <TooltipContent side="top">{copies.download}</TooltipContent>
                           </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button onClick={() => handleDelete(ep.id)} className="shrink-0 text-muted-foreground hover:text-destructive transition-colors" aria-label={copies.deleteEpisode}>
