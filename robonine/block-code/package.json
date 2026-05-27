@@ -1,0 +1,8 @@
+{
+  "name": "@robonine/plugin-block-code",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "blockly": "^12"
+  }
+}
