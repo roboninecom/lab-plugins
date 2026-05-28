@@ -43,13 +43,15 @@ export interface McpService {
   readonly relayConnected: boolean
   readonly started: boolean
   connect(): void
+  setFrameCapture(fn: (() => ImageData | null) | null): void
 }
 
-const ALL_TOOL_NAMES = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path', 'move_to', 'go_home', 'execute_path']
+const ALL_TOOL_NAMES = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path', 'move_to', 'go_home', 'execute_path', 'extract_scene']
 
 export const PluginService: PluginServiceFactory = (ctx) => {
   const registeredTools: string[] = []
   let relayConnected = false
+  let frameCapture: (() => ImageData | null) | null = null
 
   const handlers: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
     get_robot_position: async (args) => {
@@ -89,6 +91,39 @@ export const PluginService: PluginServiceFactory = (ctx) => {
       await ctx.executePath(String(args['id']), roleArg(args))
 
       return 'OK'
+    },
+    extract_scene: async (args) => {
+      const providedImage = args['image_base64'] ? String(args['image_base64']) : null
+      const mimeType = args['mime_type'] ? String(args['mime_type']) : undefined
+      const imageData = frameCapture?.() ?? null
+      let bin = ''
+
+      if (providedImage) {
+        return ctx.extractSceneObjects(providedImage, mimeType)
+      }
+
+      if (!frameCapture) {
+        return 'No camera connected. Open the MCP Bridge plugin and add a camera using the camera button in the toolbar.'
+      }
+
+      if (!imageData) {
+        return 'Could not capture a frame. Make sure the MCP Bridge plugin tab is open.'
+      }
+
+      const canvas = new OffscreenCanvas(imageData.width, imageData.height)
+      const ctx2d = canvas.getContext('2d')!
+
+      ctx2d.putImageData(imageData, 0, 0)
+
+      const blob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.85 })
+      const buffer = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buffer)
+
+      for (let i = 0; i < bytes.byteLength; i++) {
+        bin += String.fromCharCode(bytes[i])
+      }
+
+      return ctx.extractSceneObjects(btoa(bin), 'image/jpeg')
     },
   }
 
@@ -191,6 +226,20 @@ export const PluginService: PluginServiceFactory = (ctx) => {
         type: 'object',
       },
       name: 'execute_path',
+    },
+    {
+      annotations: { readOnlyHint: true },
+      description:
+        'Detect all objects in an image using the Gemini vision model. Returns an array of objects with labels and pixel-space bounding boxes (x_min, y_min, x_max, y_max). Requires the user to be signed in.',
+      execute: async (args) => text(await handlers['extract_scene']!(args)),
+      inputSchema: {
+        properties: {
+          image_base64: { description: 'Base64-encoded image to analyse. If omitted, a frame is captured from the connected camera.', type: 'string' },
+          mime_type: { description: 'MIME type of the image. Defaults to "image/jpeg". Only used when image_base64 is provided.', type: 'string' },
+        },
+        type: 'object',
+      },
+      name: 'extract_scene',
     },
   ]
 
@@ -322,6 +371,9 @@ export const PluginService: PluginServiceFactory = (ctx) => {
       return relayConnected
     },
     connect,
+    setFrameCapture(fn) {
+      frameCapture = fn
+    },
   }
 
   return service

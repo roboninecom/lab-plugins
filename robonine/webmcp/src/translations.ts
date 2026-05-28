@@ -19,6 +19,9 @@ export const translations = {
     toolDescMoveTo: 'Move end-effector to XYZ position via IK',
     toolDescGoHome: 'Move robot to home position',
     toolDescExecutePath: 'Execute a saved motion path',
+    toolDescExtractScene: 'Detect all objects in an image',
+    cameraSectionTitle: 'Camera',
+    noCameras: 'No cameras connected. Use the camera button in the toolbar to add one.',
   },
   ru: {
     title: 'MCP Мост',
@@ -40,5 +43,8 @@ export const translations = {
     toolDescMoveTo: 'Переместить захват в позицию XYZ через IK',
     toolDescGoHome: 'Переместить робота в домашнюю позицию',
     toolDescExecutePath: 'Выполнить сохранённую траекторию движения',
+    toolDescExtractScene: 'Распознать все объекты на изображении',
+    cameraSectionTitle: 'Камера',
+    noCameras: 'Нет подключённых камер. Используйте кнопку камеры на панели инструментов.',
   },
 } satisfies Record<string, Record<string, string>>
