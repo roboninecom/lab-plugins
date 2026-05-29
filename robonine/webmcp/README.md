@@ -147,3 +147,62 @@ Read a motion path by ID, including all waypoints.
 | `id` | string | ✓ | Path ID |
 
 **Output:** Full path object with `points` array.
+
+---
+
+## Action atoms
+
+High-level manipulation primitives layered on top of the low-level move/servo tools.
+Each atom is one self-contained step of a pick-and-place sequence:
+`pregrip` → `grip` → `lift` → `move` → `release`. All require a connected robot
+with the `robot.control` scope; `pregrip`/`move` additionally need an IK model.
+
+### `pregrip`
+
+Open the gripper and move the end-effector to a standoff pose near a target object.
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `x`, `y`, `z` | number | ✓ | Target object position, metres (URDF world frame). |
+| `approach` | `"auto"` \| `"top"` \| `"side"` | | Approach direction. Defaults to `"auto"`. |
+| `clearance` | number | | Standoff distance from the object, metres. Defaults to `0.05`. |
+| `role` | `"default"` \| `"leader"` | | Connection role. Defaults to `"default"`. |
+
+### `grip`
+
+Close the gripper onto an object, stopping early when the force sensor detects contact.
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `force` | number | | Target close amount, `0`–`1` (soft upper bound). Defaults to `1`. |
+| `contactThreshold` | number | | Raw force reading that counts as contact. Defaults to `500`. |
+| `role` | `"default"` \| `"leader"` | | Connection role. Defaults to `"default"`. |
+
+**Output:** `{ "gripped": true, "force": 812, "position": 0.74 }`
+
+### `lift`
+
+Raise the end-effector straight up to clear the surface, keeping XY fixed.
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `height` | number | | Vertical distance to raise, metres. Defaults to `0.05`. |
+| `role` | `"default"` \| `"leader"` | | Connection role. Defaults to `"default"`. |
+
+### `move`
+
+Move the end-effector to an XYZ position via inverse kinematics, carrying any held object.
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `x`, `y`, `z` | number | ✓ | Target position, metres (URDF world frame). |
+| `role` | `"default"` \| `"leader"` | | Connection role. Defaults to `"default"`. |
+
+### `release`
+
+Open the gripper to release the held object.
+
+| Field | Type | Required | Description |
+|---|---|:---:|---|
+| `open` | number | | Open amount, `0`–`1`. Defaults to `1` (fully open). |
+| `role` | `"default"` \| `"leader"` | | Connection role. Defaults to `"default"`. |

@@ -8,7 +8,30 @@ interface Props {
   context: PluginContext
 }
 
-const ALL_TOOLS = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path', 'move_to', 'go_home', 'execute_path', 'extract_scene'] as const
+const ALL_TOOLS = [
+  'robonine',
+  'list_robots',
+  'get_robot_position',
+  'stop_robot',
+  'list_user_robots',
+  'list_paths',
+  'read_path',
+  'move_to',
+  'go_home',
+  'execute_path',
+  'extract_scene',
+  'pregrip',
+  'grip',
+  'lift',
+  'move',
+  'release',
+] as const
+
+const ACTION_ATOM_TOOLS = ['pregrip', 'grip', 'lift', 'move', 'release'] as const
+
+type ActionAtomTool = (typeof ACTION_ATOM_TOOLS)[number]
+
+const BASE_TOOLS = ALL_TOOLS.filter((name): name is Exclude<(typeof ALL_TOOLS)[number], ActionAtomTool> => !ACTION_ATOM_TOOLS.includes(name as ActionAtomTool))
 
 type T = (typeof translations)[keyof typeof translations]
 
@@ -25,6 +48,11 @@ function toolDesc(name: (typeof ALL_TOOLS)[number], t: T): string {
     go_home: t.toolDescGoHome,
     execute_path: t.toolDescExecutePath,
     extract_scene: t.toolDescExtractScene,
+    pregrip: t.toolDescPregrip,
+    grip: t.toolDescGrip,
+    lift: t.toolDescLift,
+    move: t.toolDescMove,
+    release: t.toolDescRelease,
   }
 
   return map[name]
@@ -137,7 +165,17 @@ export function PluginRoot({ context }: Props) {
         <div className="rounded-lg border bg-card p-5 space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.toolsSectionTitle}</p>
           <div className="space-y-2">
-            {ALL_TOOLS.map((name) => (
+            {BASE_TOOLS.map((name) => (
+              <div key={name} className="flex items-center justify-between gap-4 text-sm">
+                <code className="font-mono shrink-0">{name}</code>
+                <span className="text-xs text-muted-foreground text-right">{toolDesc(name, t)}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="pt-2 border-t space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.actionAtomsSectionTitle}</p>
+            {ACTION_ATOM_TOOLS.map((name) => (
               <div key={name} className="flex items-center justify-between gap-4 text-sm">
                 <code className="font-mono shrink-0">{name}</code>
                 <span className="text-xs text-muted-foreground text-right">{toolDesc(name, t)}</span>

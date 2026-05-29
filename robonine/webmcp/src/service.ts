@@ -46,7 +46,24 @@ export interface McpService {
   setFrameCapture(fn: (() => ImageData | null) | null): void
 }
 
-const ALL_TOOL_NAMES = ['robonine', 'list_robots', 'get_robot_position', 'stop_robot', 'list_user_robots', 'list_paths', 'read_path', 'move_to', 'go_home', 'execute_path', 'extract_scene']
+const ALL_TOOL_NAMES = [
+  'robonine',
+  'list_robots',
+  'get_robot_position',
+  'stop_robot',
+  'list_user_robots',
+  'list_paths',
+  'read_path',
+  'move_to',
+  'go_home',
+  'execute_path',
+  'extract_scene',
+  'pregrip',
+  'grip',
+  'lift',
+  'move',
+  'release',
+]
 
 export const PluginService: PluginServiceFactory = (ctx) => {
   const registeredTools: string[] = []
@@ -105,6 +122,27 @@ export const PluginService: PluginServiceFactory = (ctx) => {
 
       return ctx.extractSceneObjects(imageData)
     },
+    pregrip: async (args) => {
+      await ctx.actions.pregrip({ x: Number(args['x']), y: Number(args['y']), z: Number(args['z']), approach: approachArg(args), clearance: optNum(args, 'clearance'), role: roleArg(args) })
+
+      return 'OK'
+    },
+    grip: async (args) => ctx.actions.grip({ force: optNum(args, 'force'), contactThreshold: optNum(args, 'contactThreshold'), role: roleArg(args) }),
+    lift: async (args) => {
+      await ctx.actions.lift({ height: optNum(args, 'height'), role: roleArg(args) })
+
+      return 'OK'
+    },
+    move: async (args) => {
+      await ctx.actions.move({ x: Number(args['x']), y: Number(args['y']), z: Number(args['z']), role: roleArg(args) })
+
+      return 'OK'
+    },
+    release: async (args) => {
+      await ctx.actions.release({ open: optNum(args, 'open'), role: roleArg(args) })
+
+      return 'OK'
+    },
   }
 
   let attempt: () => void = () => {}
@@ -116,6 +154,16 @@ export const PluginService: PluginServiceFactory = (ctx) => {
 
   function roleArg(args: Record<string, unknown>): ConnectionRole {
     return args['role'] === 'leader' ? 'leader' : 'default'
+  }
+
+  function approachArg(args: Record<string, unknown>): 'auto' | 'side' | 'top' {
+    const a = args['approach']
+
+    return a === 'top' || a === 'side' ? a : 'auto'
+  }
+
+  function optNum(args: Record<string, unknown>, key: string): number | undefined {
+    return args[key] === undefined ? undefined : Number(args[key])
   }
 
   // WebMCP tool definitions (schema + execute wrapping the shared handler)
@@ -213,6 +261,77 @@ export const PluginService: PluginServiceFactory = (ctx) => {
         'Detect all objects in an image using the Gemini vision model. Returns an array of objects with labels and pixel-space bounding boxes (x_min, y_min, x_max, y_max). Requires the user to be signed in.',
       execute: async (args) => text(await handlers['extract_scene']!(args)),
       name: 'extract_scene',
+    },
+    {
+      description:
+        'Action atom: open the gripper and move the end-effector to a standoff pose near a target object, ready to grip. Pre-positions using inverse kinematics with a clearance offset based on the approach direction.',
+      execute: async (args) => text(await handlers['pregrip']!(args)),
+      inputSchema: {
+        properties: {
+          x: { description: 'Target object X coordinate in metres (URDF world frame).', type: 'number' },
+          y: { description: 'Target object Y coordinate in metres (URDF world frame).', type: 'number' },
+          z: { description: 'Target object Z coordinate in metres (URDF world frame).', type: 'number' },
+          approach: { description: 'Approach direction: "top" (from above), "side" (from in front), or "auto" (default).', enum: ['auto', 'side', 'top'], type: 'string' },
+          clearance: { description: 'Standoff distance from the object in metres. Defaults to 0.05.', type: 'number' },
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+        },
+        required: ['x', 'y', 'z'],
+        type: 'object',
+      },
+      name: 'pregrip',
+    },
+    {
+      description:
+        'Action atom: close the gripper onto an object. Closing stops early when the force sensor detects contact (on robots that have one). Returns whether the grip succeeded, the final force reading, and the gripper position.',
+      execute: async (args) => text(await handlers['grip']!(args)),
+      inputSchema: {
+        properties: {
+          force: { description: 'Target close amount, 0 (barely closed) to 1 (fully closed). Soft upper bound. Defaults to 1.', type: 'number' },
+          contactThreshold: { description: 'Raw force-sensor reading above which contact is assumed and closing stops. Defaults to 500.', type: 'number' },
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+        },
+        type: 'object',
+      },
+      name: 'grip',
+    },
+    {
+      description: 'Action atom: raise the end-effector straight up to clear the surface, keeping its XY position fixed.',
+      execute: async (args) => text(await handlers['lift']!(args)),
+      inputSchema: {
+        properties: {
+          height: { description: 'Vertical distance to raise the end-effector in metres. Defaults to 0.05.', type: 'number' },
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+        },
+        type: 'object',
+      },
+      name: 'lift',
+    },
+    {
+      description: 'Action atom: move the end-effector to an XYZ position (metres, URDF frame) via inverse kinematics, carrying any held object.',
+      execute: async (args) => text(await handlers['move']!(args)),
+      inputSchema: {
+        properties: {
+          x: { description: 'Target X coordinate in metres (URDF world frame).', type: 'number' },
+          y: { description: 'Target Y coordinate in metres (URDF world frame).', type: 'number' },
+          z: { description: 'Target Z coordinate in metres (URDF world frame).', type: 'number' },
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+        },
+        required: ['x', 'y', 'z'],
+        type: 'object',
+      },
+      name: 'move',
+    },
+    {
+      description: 'Action atom: open the gripper to release the held object.',
+      execute: async (args) => text(await handlers['release']!(args)),
+      inputSchema: {
+        properties: {
+          open: { description: 'Open amount, 0 (stay closed) to 1 (fully open). Defaults to 1.', type: 'number' },
+          role: { description: 'Connection role: "default" (follower) or "leader". Defaults to "default".', type: 'string' },
+        },
+        type: 'object',
+      },
+      name: 'release',
     },
   ]
 
