@@ -26,7 +26,6 @@ export const translations = {
     toolDescMove: 'Move the end-effector to an XYZ position',
     toolDescRelease: 'Open gripper to release the object',
     cameraSectionTitle: 'Camera',
-    actionAtomsSectionTitle: 'Action atoms',
     noCameras: 'No cameras connected. Use the camera button in the toolbar to add one.',
   },
   ru: {
@@ -56,7 +55,6 @@ export const translations = {
     toolDescMove: 'Переместить захват в позицию XYZ',
     toolDescRelease: 'Открыть захват, чтобы отпустить объект',
     cameraSectionTitle: 'Камера',
-    actionAtomsSectionTitle: 'Атомарные действия',
     noCameras: 'Нет подключённых камер. Используйте кнопку камеры на панели инструментов.',
   },
 } satisfies Record<string, Record<string, string>>
