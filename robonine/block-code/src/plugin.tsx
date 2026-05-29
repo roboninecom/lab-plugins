@@ -1,6 +1,6 @@
+import { ChevronDown, Download, Play, Square, Upload } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type Executor, type RunMode, createExecutor } from './executor'
-import { Download, Play, Square, Upload } from 'lucide-react'
 import { registerRobotBlocks, toolbox } from './robotBlocks'
 import type { PluginContext } from '@robonine/plugin-sdk'
 import { javascriptGenerator } from 'blockly/javascript'
@@ -342,15 +342,18 @@ export function PluginRoot({ context }: Props) {
             </Button>
           )}
 
-          <select
-            value={mode}
-            disabled={isRunning}
-            onChange={(e) => setMode(e.target.value as RunMode)}
-            className="h-8 rounded-md border border-input bg-background px-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 cursor-pointer"
-          >
-            <option value="simulation">{t.modeSimulation}</option>
-            <option value="real">{t.modeReal}</option>
-          </select>
+          <div className="relative">
+            <select
+              value={mode}
+              disabled={isRunning}
+              onChange={(e) => setMode(e.target.value as RunMode)}
+              className="h-8 appearance-none rounded-md border border-input bg-background pl-2.5 pr-7 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 cursor-pointer"
+            >
+              <option value="simulation">{t.modeSimulation}</option>
+              <option value="real">{t.modeReal}</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          </div>
 
           <span className="ml-1 text-xs text-muted-foreground hidden sm:inline">{modeNote}</span>
 
@@ -363,11 +366,11 @@ export function PluginRoot({ context }: Props) {
             <input ref={importInputRef} type="file" accept=".json" className="hidden" onChange={handleImport} />
             <Button size="sm" variant="outline" onClick={() => importInputRef.current?.click()} className="gap-1.5">
               <Upload className="w-3.5 h-3.5" />
-              {t.importProgram}
+              <span className="hidden sm:inline">{t.importProgram}</span>
             </Button>
             <Button size="sm" variant="outline" onClick={handleExport} className="gap-1.5">
               <Download className="w-3.5 h-3.5" />
-              {t.exportProgram}
+              <span className="hidden sm:inline">{t.exportProgram}</span>
             </Button>
           </div>
         </div>
