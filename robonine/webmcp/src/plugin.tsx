@@ -120,51 +120,53 @@ export function PluginRoot({ context }: Props) {
   }, [service, selectedCamera])
 
   return (
-    <div className="flex flex-1 items-center justify-center">
-      <div className="max-w-md w-full space-y-6">
-        <div>
-          <h1 className="text-xl font-semibold">{t.title}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
-        </div>
+    <div className="flex-1 overflow-y-auto">
+      <div className="flex min-h-full items-center justify-center p-6">
+        <div className="max-w-md w-full space-y-6">
+          <div>
+            <h1 className="text-xl font-semibold">{t.title}</h1>
+            <p className="text-sm text-muted-foreground mt-1">{t.description}</p>
+          </div>
 
-        <div className="rounded-lg border bg-card p-5 space-y-4">
-          <StatusRow ok={relayConnected} label={relayConnected ? t.relayConnected : t.relayDisconnected} actionHref="https://github.com/roboninecom/robonine-mcp" actionLabel={t.relayHowTo} />
-          <StatusRow ok={isActive} label={isActive ? t.statusActive : t.statusInactive} note={t.statusNote} />
-        </div>
+          <div className="rounded-lg border bg-card p-5 space-y-4">
+            <StatusRow ok={relayConnected} label={relayConnected ? t.relayConnected : t.relayDisconnected} actionHref="https://github.com/roboninecom/robonine-mcp" actionLabel={t.relayHowTo} />
+            <StatusRow ok={isActive} label={isActive ? t.statusActive : t.statusInactive} note={t.statusNote} />
+          </div>
 
-        <div className="rounded-lg border bg-card p-5 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.cameraSectionTitle}</p>
-          {context.cameras.length === 0 ? (
-            <p className="text-sm text-muted-foreground">{t.noCameras}</p>
-          ) : (
-            <div className="space-y-3">
-              {context.cameras.length > 1 && (
-                <select
-                  value={selectedCameraId ?? ''}
-                  onChange={(e) => setSelectedCameraId(e.target.value || null)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  {context.cameras.map((cam) => (
-                    <option key={cam.id} value={cam.id}>
-                      {cam.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <CameraView stream={selectedCamera?.stream ?? null} ref={cameraViewRef} className="w-full rounded-md overflow-hidden aspect-video" />
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg border bg-card p-5 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.toolsSectionTitle}</p>
-          <div className="space-y-2">
-            {ALL_TOOLS.map((name) => (
-              <div key={name} className="flex items-center justify-between gap-4 text-sm">
-                <code className="font-mono shrink-0">{name}</code>
-                <span className="text-xs text-muted-foreground text-right">{toolDesc(name, t)}</span>
+          <div className="rounded-lg border bg-card p-5 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.cameraSectionTitle}</p>
+            {context.cameras.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t.noCameras}</p>
+            ) : (
+              <div className="space-y-3">
+                {context.cameras.length > 1 && (
+                  <select
+                    value={selectedCameraId ?? ''}
+                    onChange={(e) => setSelectedCameraId(e.target.value || null)}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {context.cameras.map((cam) => (
+                      <option key={cam.id} value={cam.id}>
+                        {cam.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                <CameraView stream={selectedCamera?.stream ?? null} ref={cameraViewRef} className="w-full rounded-md overflow-hidden aspect-video" />
               </div>
-            ))}
+            )}
+          </div>
+
+          <div className="rounded-lg border bg-card p-5 space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t.toolsSectionTitle}</p>
+            <div className="space-y-2">
+              {ALL_TOOLS.map((name) => (
+                <div key={name} className="flex items-center justify-between gap-4 text-sm">
+                  <code className="font-mono shrink-0">{name}</code>
+                  <span className="text-xs text-muted-foreground text-right">{toolDesc(name, t)}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
