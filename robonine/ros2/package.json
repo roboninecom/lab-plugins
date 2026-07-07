@@ -1,0 +1,13 @@
+{
+  "name": "@robonine/plugin-ros2",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@codemirror/lang-cpp": "^6",
+    "@codemirror/lang-python": "^6",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "codemirror": "^6",
+    "web-tree-sitter": "^0.26"
+  }
+}
