@@ -18,6 +18,7 @@ type T = {
   doneDescription: string
   startOver: string
   skip: string
+  back: string
   error: string
 }
 
@@ -49,6 +50,7 @@ export const translations: Record<string, T> = {
     doneDescription: 'All motor IDs have been set.',
     startOver: 'Start over',
     skip: 'Skip',
+    back: 'Back',
     error: 'Something went wrong. Please try again.',
   },
   ru: {
@@ -78,6 +80,7 @@ export const translations: Record<string, T> = {
     doneDescription: 'Все ID моторов установлены.',
     startOver: 'Начать заново',
     skip: 'Пропустить',
+    back: 'Назад',
     error: 'Что-то пошло не так. Попробуйте ещё раз.',
   },
 }

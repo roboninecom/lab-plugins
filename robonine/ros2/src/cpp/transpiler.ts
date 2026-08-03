@@ -332,12 +332,21 @@ export function transpileCpp(parser: Parser, source: string): string {
         if (token) {
           return `__rt.newMsg('${token}')`
         }
+        if (normalize(templateArg) === 'rclcpp::Node') {
+          return `new __rt.Node(${args.join(', ')})`
+        }
         if (classes.has(normalize(templateArg))) {
           return `new ${normalize(templateArg)}(${args.join(', ')})`
         }
 
         return fail(node, `Unknown type in std::make_shared: ${templateArg}`)
       }
+      case 'moveit::planning_interface::MoveGroupInterface':
+        return `new __rt.MoveGroupInterface(${args.join(', ')})`
+      case 'moveit::planning_interface::MoveGroupInterface::Plan':
+        return '__rt.newPlan()'
+      case 'rclcpp::get_logger':
+        return `__rt.getLogger(${args.join(', ')})`
       case 'rclcpp::init':
         return '__rt.init()'
       case 'rclcpp::shutdown':
@@ -404,6 +413,12 @@ export function transpileCpp(parser: Parser, source: string): string {
 
     if (token) {
       return `__rt.newMsg('${token}')`
+    }
+
+    // `using moveit::planning_interface::MoveGroupInterface;` makes the bare
+    // name a constructor call — honor it unless the student defined their own.
+    if (fnName === 'MoveGroupInterface' && !classes.has(fnName)) {
+      return `new __rt.MoveGroupInterface(${args.join(', ')})`
     }
 
     return null
@@ -631,6 +646,9 @@ export function transpileCpp(parser: Parser, source: string): string {
         if (text === 'M_PI' || text === 'std::numbers::pi') {
           return 'Math.PI'
         }
+        if (/MoveItErrorCodes?::SUCCESS$/.test(text)) {
+          return '1'
+        }
 
         const token = msgTypeToken(text)
 
@@ -773,6 +791,9 @@ export function transpileCpp(parser: Parser, source: string): string {
   function defaultForType(typeText: string): string {
     const flat = normalize(typeText)
 
+    if (flat.endsWith('MoveGroupInterface::Plan')) {
+      return '__rt.newPlan()'
+    }
     if (flat.includes('vector') || flat.includes('array')) {
       return '[]'
     }
@@ -817,7 +838,9 @@ export function transpileCpp(parser: Parser, source: string): string {
           if (valueNode.type === 'argument_list') {
             const args = emitArgs(valueNode, ctx)
 
-            if (normalize(typeText).includes('vector') && args.length === 2) {
+            if (normalize(typeText).endsWith('MoveGroupInterface')) {
+              parts.push(`${name} = new __rt.MoveGroupInterface(${args.join(', ')})`)
+            } else if (normalize(typeText).includes('vector') && args.length === 2) {
               parts.push(`${name} = Array(${args[0]}).fill(${args[1]})`)
             } else if (classes.has(normalize(typeText))) {
               parts.push(`${name} = new ${normalize(typeText)}(${args.join(', ')})`)

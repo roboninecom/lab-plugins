@@ -1,13 +1,29 @@
+import {
+  type EditorLanguage,
+  type LibrarySettings,
+  type WorkspaceFile,
+  downloadWorkspaceZip,
+  fileLanguage,
+  isValidFileName,
+  loadFiles,
+  loadLibraries,
+  saveFiles,
+  saveLibraries,
+  templateFor,
+  usesMoveIt,
+} from './workspace'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
-import { ChevronDown, Loader2, Play, Square } from 'lucide-react'
-import { CodeEditor, type EditorLanguage } from './editor'
+import { MOVEIT_SHIM_SOURCE } from './python/moveitSource'
 import { createPythonRuntime } from './python/pyRunner'
-import { CPP_SAMPLE, PYTHON_SAMPLE } from './samples'
+import { Loader2, Play, Square } from 'lucide-react'
+import type { MoveItHostApi } from './core/moveit'
 import { createCppRuntime } from './cpp/cppRunner'
 import { createRobotBridge } from './core/bridge'
 import { translations } from './translations'
 import { RosCore } from './core/rosCore'
+import { SidePanel } from './sidePanel'
+import { CodeEditor } from './editor'
 
 interface Props {
   context: PluginContext
@@ -16,7 +32,7 @@ interface Props {
 type Tab = 'code' | 'world'
 
 interface OutputLine {
-  kind: 'info' | 'stdout' | 'warn' | 'error'
+  kind: 'error' | 'info' | 'stdout' | 'warn'
   text: string
 }
 
@@ -27,20 +43,23 @@ interface LoaderState {
 }
 
 const IDLE_LOADER: LoaderState = { active: false, label: '', error: false }
+const PYTHON_PACKAGES = ['numpy', 'scipy']
 
 export function PluginRoot({ context }: Props) {
   const t = useMemo(() => translations[context.locale as keyof typeof translations] ?? translations.en, [context.locale])
   const { Button } = context.ui
   const [tab, setTab] = useState<Tab>('code')
-  const [language, setLanguage] = useState<EditorLanguage>('python')
   const [isRunning, setIsRunning] = useState(false)
   const [isStopping, setIsStopping] = useState(false)
   const [loader, setLoader] = useState<LoaderState>(IDLE_LOADER)
   const [output, setOutput] = useState<OutputLine[]>([])
+  const [libraries, setLibraries] = useState<LibrarySettings>(loadLibraries)
   const worldViewRef = useRef<WorldViewApi>(null)
   const outputEndRef = useRef<HTMLDivElement>(null)
-  const codeRef = useRef<Record<EditorLanguage, string>>({ python: PYTHON_SAMPLE, cpp: CPP_SAMPLE })
+  const filesRef = useRef<WorkspaceFile[]>([])
+  const runningLanguageRef = useRef<EditorLanguage>('python')
   const contextRef = useRef(context)
+  const librariesRef = useRef(libraries)
   const core = useMemo(() => new RosCore(), [])
 
   // ── UI ──────────────────────────────────────────────────────────────────────
@@ -56,10 +75,49 @@ export function PluginRoot({ context }: Props) {
           ? 'text-muted-foreground'
           : 'text-foreground whitespace-pre-wrap'
 
-  contextRef.current = context
+  if (filesRef.current.length === 0) {
+    filesRef.current = loadFiles()
+  }
 
-  const pythonRuntime = useMemo(() => createPythonRuntime(core), [core])
-  const cppRuntime = useMemo(() => createCppRuntime(core), [core])
+  const [fileNames, setFileNames] = useState<string[]>(() => filesRef.current.map((file) => file.name))
+  const [activeName, setActiveName] = useState<string>(() => filesRef.current[0].name)
+  const activeLanguage: EditorLanguage = fileLanguage(activeName) ?? 'python'
+  const activeFile = filesRef.current.find((file) => file.name === activeName) ?? filesRef.current[0]
+
+  contextRef.current = context
+  librariesRef.current = libraries
+
+  // ── MoveIt host services (IK + named targets come from the platform) ──────
+
+  const moveitHost = useMemo<MoveItHostApi>(
+    () => ({
+      async solveIk(target, seed) {
+        try {
+          return await contextRef.current.kinematics.inverseKinematics(target, seed)
+        } catch {
+          return null
+        }
+      },
+      namedTarget(name) {
+        const config = contextRef.current.robotConfig
+        const home: Record<string, number> = {}
+
+        if (!config || name !== 'home') {
+          return null
+        }
+
+        for (const [joint, servoId] of Object.entries(config.jointServoId)) {
+          home[joint] = config.neutralJointValue(servoId)
+        }
+
+        return home
+      },
+    }),
+    [],
+  )
+
+  const pythonRuntime = useMemo(() => createPythonRuntime(core, moveitHost), [core, moveitHost])
+  const cppRuntime = useMemo(() => createCppRuntime(core, () => (librariesRef.current.moveit ? moveitHost : null)), [core, moveitHost])
 
   const bridge = useMemo(
     () =>
@@ -82,7 +140,103 @@ export function PluginRoot({ context }: Props) {
     setOutput((prev) => [...prev.slice(-499), { kind, text }])
   }, [])
 
-  // ── Runtime loading ─────────────────────────────────────────────────────────
+  // ── Workspace ───────────────────────────────────────────────────────────────
+
+  const persistFiles = useCallback(() => {
+    saveFiles(filesRef.current)
+  }, [])
+
+  const handleContentChange = useCallback(
+    (code: string) => {
+      const file = filesRef.current.find((entry) => entry.name === activeName)
+
+      if (file) {
+        file.content = code
+        persistFiles()
+      }
+    },
+    [activeName, persistFiles],
+  )
+
+  const handleCreateFile = useCallback(
+    (name: string): boolean => {
+      if (!isValidFileName(name)) {
+        contextRef.current.toast.error(t.invalidFileName)
+
+        return false
+      }
+      if (filesRef.current.some((file) => file.name === name)) {
+        contextRef.current.toast.error(t.duplicateFileName)
+
+        return false
+      }
+      filesRef.current.push({ name, content: templateFor(name) })
+      persistFiles()
+      setFileNames(filesRef.current.map((file) => file.name))
+      setActiveName(name)
+
+      return true
+    },
+    [persistFiles, t],
+  )
+
+  const handleRenameFile = useCallback(
+    (oldName: string, newName: string): boolean => {
+      const file = filesRef.current.find((entry) => entry.name === oldName)
+
+      if (newName === oldName) {
+        return true
+      }
+      if (!isValidFileName(newName)) {
+        contextRef.current.toast.error(t.invalidFileName)
+
+        return false
+      }
+      if (filesRef.current.some((file) => file.name === newName)) {
+        contextRef.current.toast.error(t.duplicateFileName)
+
+        return false
+      }
+
+      if (!file) {
+        return false
+      }
+      file.name = newName
+      persistFiles()
+      setFileNames(filesRef.current.map((entry) => entry.name))
+      setActiveName((current) => (current === oldName ? newName : current))
+
+      return true
+    },
+    [persistFiles, t],
+  )
+
+  const handleDeleteFile = useCallback(
+    (name: string) => {
+      if (filesRef.current.length <= 1) {
+        contextRef.current.toast.error(t.lastFileNote)
+
+        return
+      }
+      filesRef.current = filesRef.current.filter((file) => file.name !== name)
+      persistFiles()
+      setFileNames(filesRef.current.map((file) => file.name))
+      setActiveName((current) => (current === name ? filesRef.current[0].name : current))
+    },
+    [persistFiles, t],
+  )
+
+  const handleToggleLibrary = useCallback((key: keyof LibrarySettings) => {
+    setLibraries((prev) => {
+      const next = { ...prev, [key]: !prev[key] }
+
+      saveLibraries(next)
+
+      return next
+    })
+  }, [])
+
+  // ── Runtime loading (lazy: nothing downloads until the first run) ─────────
 
   const ensureRuntime = useCallback(
     async (lang: EditorLanguage): Promise<boolean> => {
@@ -120,10 +274,6 @@ export function PluginRoot({ context }: Props) {
   )
 
   useEffect(() => {
-    void ensureRuntime(language)
-  }, [language, ensureRuntime])
-
-  useEffect(() => {
     appendLine('info', t.topicsHint)
 
     return () => {
@@ -144,11 +294,12 @@ export function PluginRoot({ context }: Props) {
     bridge.stop()
     setIsRunning(false)
     setIsStopping(false)
+    setLoader(IDLE_LOADER)
   }, [bridge])
 
   const handleRun = useCallback(async () => {
-    const code = codeRef.current[language]
-    const ready = await ensureRuntime(language)
+    const language = activeLanguage
+    const code = filesRef.current.find((file) => file.name === activeName)?.content ?? ''
 
     const hooks = {
       onLog: appendLog,
@@ -163,6 +314,11 @@ export function PluginRoot({ context }: Props) {
 
     if (!code.trim()) {
       appendLine('info', t.emptyProgram)
+
+      return
+    }
+    if (!libraries.moveit && usesMoveIt(code, language)) {
+      appendLine('info', t.moveitDisabledHint)
 
       return
     }
@@ -182,126 +338,150 @@ export function PluginRoot({ context }: Props) {
       }
     }
 
+    const ready = await ensureRuntime(language)
+
     if (!ready) {
       return
     }
     setOutput([])
     bridge.start()
+    runningLanguageRef.current = language
     setIsRunning(true)
 
     if (language === 'python') {
-      pythonRuntime.run(code, hooks)
+      pythonRuntime.run(
+        code,
+        {
+          packages: libraries.numpy ? PYTHON_PACKAGES : [],
+          moveit: libraries.moveit ? { code: MOVEIT_SHIM_SOURCE, config: JSON.stringify({ namedTargets: { home: moveitHost.namedTarget('home') ?? {} } }) } : null,
+        },
+        {
+          ...hooks,
+          onProgress: (progress) => {
+            setLoader({ active: true, label: progress.step === 'package' ? `${t.loadingPackage}: ${progress.name ?? ''}` : t.loadingRclpy, error: false })
+          },
+          onStarted: () => {
+            setLoader(IDLE_LOADER)
+          },
+        },
+      )
     } else {
       cppRuntime.run(code, hooks)
     }
-  }, [language, context, ensureRuntime, bridge, appendLog, finishRun, t])
+  }, [activeLanguage, activeName, libraries, context, ensureRuntime, bridge, appendLog, finishRun, moveitHost, t])
 
   const handleStop = useCallback(() => {
     setIsStopping(true)
     appendLine('info', t.stoppingNote)
-    if (language === 'python') {
+    if (runningLanguageRef.current === 'python') {
       pythonRuntime.stop(() => {
         appendLine('warn', t.restartingRuntime)
       })
     } else {
       cppRuntime.stop()
     }
-  }, [language, pythonRuntime, cppRuntime, t])
+  }, [pythonRuntime, cppRuntime, t])
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
-      <div className="flex border-b shrink-0 select-none">
-        <button className={tabCls(tab === 'code')} onClick={() => setTab('code')}>
-          {t.tabCode}
-        </button>
-        <button className={tabCls(tab === 'world')} onClick={() => setTab('world')}>
-          {t.tabWorld}
-        </button>
-        {isRunning && (
-          <div className="ml-auto flex items-center gap-1.5 px-3 text-xs text-primary font-medium">
-            <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
-            {t.running}
-          </div>
-        )}
-      </div>
+    // -m-2 pulls into the host page's p-4, halving the effective padding for this tool.
+    <div className="flex flex-1 min-h-0 -m-2">
+      {/* ── Workspace panel: files + libraries ──────────────────────────────── */}
+      <SidePanel
+        t={t}
+        ui={context.ui}
+        fileNames={fileNames}
+        activeName={activeName}
+        libraries={libraries}
+        onSelect={setActiveName}
+        onCreate={handleCreateFile}
+        onRename={handleRenameFile}
+        onDelete={handleDeleteFile}
+        onDownload={() => downloadWorkspaceZip(filesRef.current)}
+        onToggleLibrary={handleToggleLibrary}
+      />
 
-      {/* ── Code tab ────────────────────────────────────────────────────────── */}
-      <div className={`flex flex-col flex-1 min-h-0 ${tab !== 'code' ? 'hidden' : ''}`}>
-        <div className="relative flex-1 min-h-0">
-          <CodeEditor language={language} initialCode={codeRef.current[language]} onChange={(code) => (codeRef.current[language] = code)} />
-
-          {/* Loader overlay while heavy runtimes download */}
-          {loader.active && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/85 backdrop-blur-sm">
-              {!loader.error && <Loader2 className="w-8 h-8 animate-spin text-primary" />}
-              <div className="text-sm font-medium">{loader.error ? t.loadingError : t.loadingTitle}</div>
-              {!loader.error && <div className="text-xs text-muted-foreground">{loader.label}…</div>}
-              {!loader.error && <div className="text-xs text-muted-foreground max-w-sm text-center">{t.runtimeNote}</div>}
-              {loader.error && (
-                <Button size="sm" variant="outline" onClick={() => void ensureRuntime(language)}>
-                  {t.retry}
-                </Button>
-              )}
+      <div className="flex flex-col flex-1 min-h-0 min-w-0">
+        {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
+        <div className="flex border-b shrink-0 select-none">
+          <button className={tabCls(tab === 'code')} onClick={() => setTab('code')}>
+            {t.tabCode}
+          </button>
+          <button className={tabCls(tab === 'world')} onClick={() => setTab('world')}>
+            {t.tabWorld}
+          </button>
+          {isRunning && (
+            <div className="ml-auto flex items-center gap-1.5 px-3 text-xs text-primary font-medium">
+              <span className="inline-block w-2 h-2 rounded-full bg-primary animate-pulse" />
+              {t.running}
             </div>
           )}
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 px-3 py-2.5 border-t bg-card shrink-0">
-          {isRunning ? (
-            <Button size="sm" variant="destructive" onClick={handleStop} disabled={isStopping && language === 'cpp'} className="gap-1.5">
-              <Square className="w-3.5 h-3.5" />
-              {isStopping ? t.forceStop : t.stop}
-            </Button>
-          ) : (
-            <Button size="sm" onClick={() => void handleRun()} disabled={loader.active} className="gap-1.5">
-              <Play className="w-3.5 h-3.5" />
-              {t.run}
-            </Button>
-          )}
+        {/* ── Code tab ────────────────────────────────────────────────────────── */}
+        <div className={`flex flex-col flex-1 min-h-0 ${tab !== 'code' ? 'hidden' : ''}`}>
+          <div className="relative flex-1 min-h-0">
+            <CodeEditor fileName={activeFile.name} language={activeLanguage} initialCode={activeFile.content} onChange={handleContentChange} />
 
-          <div className="relative">
-            <select
-              value={language}
-              disabled={isRunning || loader.active}
-              onChange={(e) => setLanguage(e.target.value as EditorLanguage)}
-              className="h-8 appearance-none rounded-md border border-input bg-background pl-2.5 pr-7 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50 cursor-pointer"
-              aria-label={t.languageLabel}
-            >
-              <option value="python">Python</option>
-              <option value="cpp">C++</option>
-            </select>
-            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          </div>
-
-          <span className="ml-1 text-xs text-muted-foreground hidden md:inline">{t.runtimeNote}</span>
-
-          {output.length > 0 && (
-            <button className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => setOutput([])}>
-              {t.clearOutput}
-            </button>
-          )}
-        </div>
-
-        {/* Console */}
-        <div className="border-t bg-muted/40 h-40 overflow-y-auto shrink-0">
-          <div className="px-3 py-1.5 space-y-0.5 font-mono text-xs">
-            {output.length === 0 && <div className="text-muted-foreground">{t.consoleEmpty}</div>}
-            {output.map((line, i) => (
-              <div key={i} className={lineCls(line.kind)}>
-                {line.kind === 'error' ? '✖ ' : line.kind === 'warn' ? '⚠ ' : line.kind === 'info' ? '· ' : '> '}
-                {line.text}
+            {/* Loader overlay while heavy runtimes download */}
+            {loader.active && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-background/85 backdrop-blur-sm">
+                {!loader.error && <Loader2 className="w-8 h-8 animate-spin text-primary" />}
+                <div className="text-sm font-medium">{loader.error ? t.loadingError : t.loadingTitle}</div>
+                {!loader.error && <div className="text-xs text-muted-foreground">{loader.label}…</div>}
+                {!loader.error && <div className="text-xs text-muted-foreground max-w-sm text-center">{t.runtimeNote}</div>}
+                {loader.error && (
+                  <Button size="sm" variant="outline" onClick={() => void ensureRuntime(activeLanguage)}>
+                    {t.retry}
+                  </Button>
+                )}
               </div>
-            ))}
-            <div ref={outputEndRef} />
+            )}
+          </div>
+
+          {/* Toolbar */}
+          <div className="flex items-center gap-3 px-3 py-2.5 border-t bg-card shrink-0">
+            {isRunning ? (
+              <Button size="sm" variant="destructive" onClick={handleStop} disabled={isStopping && runningLanguageRef.current === 'cpp'} className="gap-1.5">
+                <Square className="w-3.5 h-3.5" />
+                {isStopping ? t.forceStop : t.stop}
+              </Button>
+            ) : (
+              <Button size="sm" onClick={() => void handleRun()} disabled={loader.active} className="gap-1.5">
+                <Play className="w-3.5 h-3.5" />
+                {t.run}
+              </Button>
+            )}
+
+            <span className="font-mono text-xs text-muted-foreground truncate">{activeFile.name}</span>
+
+            <span className="ml-1 text-xs text-muted-foreground hidden md:inline">{t.runtimeNote}</span>
+
+            {output.length > 0 && (
+              <button className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors" onClick={() => setOutput([])}>
+                {t.clearOutput}
+              </button>
+            )}
+          </div>
+
+          {/* Console */}
+          <div className="border-t bg-muted/40 h-40 overflow-y-auto shrink-0" data-id="ros2-console">
+            <div className="px-3 py-1.5 space-y-0.5 font-mono text-xs">
+              {output.length === 0 && <div className="text-muted-foreground">{t.consoleEmpty}</div>}
+              {output.map((line, i) => (
+                <div key={i} className={lineCls(line.kind)}>
+                  {line.kind === 'error' ? '✖ ' : line.kind === 'warn' ? '⚠ ' : line.kind === 'info' ? '· ' : '> '}
+                  {line.text}
+                </div>
+              ))}
+              <div ref={outputEndRef} />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ── 3D view tab — always mounted so the simulated robot keeps its pose ── */}
-      <div className={`flex-1 min-h-0 ${tab !== 'world' ? 'hidden' : ''}`}>
-        <context.WorldView ref={worldViewRef} motionMode="instant" />
+        {/* ── 3D view tab — always mounted so the simulated robot keeps its pose ── */}
+        <div className={`flex-1 min-h-0 ${tab !== 'world' ? 'hidden' : ''}`}>
+          <context.WorldView ref={worldViewRef} motionMode="instant" />
+        </div>
       </div>
     </div>
   )

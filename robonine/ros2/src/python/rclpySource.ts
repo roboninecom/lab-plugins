@@ -522,6 +522,8 @@ _rclpy = _module(
     init=init, ok=ok, shutdown=shutdown, try_shutdown=try_shutdown,
     spin=spin, spin_once=spin_once, spin_until_future_complete=spin_until_future_complete,
     _robonine_reset=_robonine_reset,
+    # Private executor hooks reused by the optional MoveIt 2 shim.
+    _robonine_process_once=_process_once, _robonine_sleep_ms=_sleep_ms,
 )
 _rclpy.node = _module('rclpy.node', Node=Node, Publisher=Publisher, Subscription=Subscription, Timer=Timer, Parameter=Parameter)
 _rclpy.qos = _module(

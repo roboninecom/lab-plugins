@@ -1,12 +1,13 @@
 import { Compartment, EditorState } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
+import type { EditorLanguage } from './workspace'
 import { python } from '@codemirror/lang-python'
 import { cpp } from '@codemirror/lang-cpp'
 import { useEffect, useRef } from 'react'
 
-export type EditorLanguage = 'python' | 'cpp'
-
 interface Props {
+  /** Identity of the open file — the editor buffer resets when it changes. */
+  fileName: string
   language: EditorLanguage
   initialCode: string
   onChange: (code: string) => void
@@ -19,7 +20,7 @@ const editorTheme = EditorView.theme({
   '&.cm-focused': { outline: 'none' },
 })
 
-export function CodeEditor({ language, initialCode, onChange }: Props) {
+export function CodeEditor({ fileName, language, initialCode, onChange }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
   const languageCompartment = useRef(new Compartment())
@@ -44,8 +45,8 @@ export function CodeEditor({ language, initialCode, onChange }: Props) {
     }
   }, [])
 
-  // Swap document and grammar together when the language changes; each
-  // language keeps its own buffer in the parent.
+  // Swap document and grammar together when the open file changes; each
+  // file keeps its own buffer in the parent.
   useEffect(() => {
     const view = viewRef.current
 
@@ -67,7 +68,7 @@ export function CodeEditor({ language, initialCode, onChange }: Props) {
         ],
       }),
     )
-  }, [language])
+  }, [fileName])
 
   return <div ref={containerRef} className="h-full min-h-0 overflow-hidden" />
 }

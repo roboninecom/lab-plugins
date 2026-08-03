@@ -1,6 +1,7 @@
 import { type CppLoadStep, loadCppParser } from './parserLoader'
 import { TranspileError, transpileCpp } from './transpiler'
 import { createRclcppRuntime } from './rclcppRuntime'
+import type { MoveItHostApi } from '../core/moveit'
 import type { RosCore } from '../core/rosCore'
 import type { Parser } from 'web-tree-sitter'
 
@@ -23,7 +24,7 @@ export interface CppRuntime {
   dispose(): void
 }
 
-export function createCppRuntime(core: RosCore): CppRuntime {
+export function createCppRuntime(core: RosCore, getMoveItHost: () => MoveItHostApi | null): CppRuntime {
   let parser: Parser | null = null
   let running = false
   let activeRuntime: ReturnType<typeof createRclcppRuntime> | null = null
@@ -43,7 +44,7 @@ export function createCppRuntime(core: RosCore): CppRuntime {
 
     run(code, hooks) {
       let program: string
-      const runtime = createRclcppRuntime(core, { onLog: hooks.onLog })
+      const runtime = createRclcppRuntime(core, { onLog: hooks.onLog, moveitHost: getMoveItHost() })
 
       if (!parser || running) {
         return

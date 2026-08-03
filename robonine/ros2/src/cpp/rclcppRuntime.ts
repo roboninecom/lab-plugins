@@ -1,16 +1,24 @@
-import type { RosCore, RosMessage } from '../core/rosCore'
+import { COMMAND_TOPIC, JOINT_STATES_TOPIC, type RosCore, type RosMessage } from '../core/rosCore'
+import { type MoveItHostApi, planJointTrajectory } from '../core/moveit'
 import { createMessage } from '../core/messages'
 
 // Runtime backing the JavaScript emitted by the transpiler. Mirrors the
 // rclcpp API surface the curated subset uses; every entity is wired to the
-// shared RosCore so C++ and Python nodes see the same topics.
+// shared RosCore so C++ and Python nodes see the same topics. MoveIt support
+// (moveit::planning_interface::MoveGroupInterface) is available when the
+// MoveIt 2 library is enabled — the host answers IK and named targets.
 
 const STOP_MESSAGE = '__ros2_stop__'
 const YIELD_INTERVAL_MS = 10
 const SPIN_TICK_MS = 5
+const MOVEIT_STATE_TIMEOUT_MS = 3000
+const MOVEIT_SUCCESS = 1
+const MOVEIT_FAILURE = 0
 
 export interface RuntimeHooks {
   onLog(level: string, text: string): void
+  /** Null when the MoveIt 2 library is disabled in the Libraries panel. */
+  moveitHost?: MoveItHostApi | null
 }
 
 export interface RclcppRuntime {
@@ -210,6 +218,191 @@ export function createRclcppRuntime(core: RosCore, hooks: RuntimeHooks): RclcppR
     }
   }
 
+  type JointTarget = { kind: 'joints'; values: number[] | Record<string, number> } | { kind: 'named'; name: string } | { kind: 'pose'; position: [number, number, number] }
+
+  interface MoveItPlan {
+    trajectory_?: { joint_names: string[]; points: Array<{ positions: number[]; dtMs: number }> } | null
+    planning_time_?: number
+  }
+
+  class MoveGroupInterface {
+    private groupName: string
+    private latestNames: string[] | null = null
+    private latestPositions: number[] | null = null
+    private target: JointTarget | null = null
+    private velocityScaling = 1
+    private lastPlan: MoveItPlan['trajectory_'] = null
+
+    constructor(_node?: unknown, groupName?: unknown) {
+      if (!hooks.moveitHost) {
+        throw new Error('MoveIt 2 is disabled — enable it in the Libraries panel.')
+      }
+      this.groupName = String(groupName ?? 'arm')
+      unsubscribers.push(
+        core.subscribe(JOINT_STATES_TOPIC, (msg) => {
+          const typed = msg as { name?: unknown; position?: unknown }
+
+          if (Array.isArray(typed.name) && Array.isArray(typed.position)) {
+            this.latestNames = typed.name.map((name) => String(name))
+            this.latestPositions = typed.position.map((value) => Number(value))
+          }
+        }),
+      )
+    }
+
+    getName(): string {
+      return this.groupName
+    }
+
+    setMaxVelocityScalingFactor(value: number): void {
+      this.velocityScaling = Math.min(1, Math.max(0.01, Number(value)))
+    }
+
+    setMaxAccelerationScalingFactor(_value: number): void {
+      // Acceleration shaping is folded into the smoothstep time-parametrization.
+    }
+
+    setPoseTarget(pose: RosMessage): void {
+      const inner = (pose as { pose?: { position?: unknown } }).pose ?? pose
+      const position = (inner as { position?: { x?: unknown; y?: unknown; z?: unknown } }).position
+
+      this.target = { kind: 'pose', position: [Number(position?.x ?? 0), Number(position?.y ?? 0), Number(position?.z ?? 0)] }
+    }
+
+    setPositionTarget(x: number, y: number, z: number): void {
+      this.target = { kind: 'pose', position: [Number(x), Number(y), Number(z)] }
+    }
+
+    setNamedTarget(name: string): void {
+      this.target = { kind: 'named', name: String(name) }
+    }
+
+    setJointValueTarget(values: number[] | Record<string, number>): void {
+      this.target = { kind: 'joints', values }
+    }
+
+    async getCurrentJointValues(): Promise<number[]> {
+      await this.waitForState()
+
+      return [...(this.latestPositions ?? [])]
+    }
+
+    private async waitForState(): Promise<void> {
+      const deadline = performance.now() + MOVEIT_STATE_TIMEOUT_MS
+
+      while (!this.latestPositions) {
+        if (performance.now() >= deadline) {
+          throw new Error('No /joint_states received — is a robot connected?')
+        }
+        await sleep(20)
+      }
+    }
+
+    private async resolveGoal(currentByName: Record<string, number>): Promise<Record<string, number> | null> {
+      const moveitHost = hooks.moveitHost
+      const names = this.latestNames ?? []
+
+      if (!this.target || !moveitHost) {
+        throw new Error('No target set — call setPoseTarget(), setNamedTarget() or setJointValueTarget() first.')
+      }
+      if (this.target.kind === 'pose') {
+        const solution = await moveitHost.solveIk(this.target.position, currentByName)
+
+        if (!solution) {
+          hooks.onLog('warn', `[moveit] No IK solution for pose goal (${this.target.position.map((v) => v.toFixed(3)).join(', ')})`)
+        }
+
+        return solution
+      }
+      if (this.target.kind === 'named') {
+        const named = moveitHost.namedTarget(this.target.name)
+
+        if (!named) {
+          hooks.onLog('warn', `[moveit] Unknown named target '${this.target.name}' (try 'home')`)
+        }
+
+        return named
+      }
+      if (Array.isArray(this.target.values)) {
+        const byName: Record<string, number> = {}
+
+        this.target.values.forEach((value, i) => {
+          if (i < names.length) {
+            byName[names[i]] = Number(value)
+          }
+        })
+
+        return byName
+      }
+
+      return this.target.values
+    }
+
+    async plan(planOut?: MoveItPlan): Promise<number> {
+      try {
+        const names = this.latestNames ?? []
+        const positions = this.latestPositions ?? []
+        const currentByName: Record<string, number> = {}
+
+        await this.waitForState()
+
+        names.forEach((name, i) => {
+          currentByName[name] = positions[i] ?? 0
+        })
+
+        const goal = await this.resolveGoal(currentByName)
+
+        if (!goal) {
+          return MOVEIT_FAILURE
+        }
+
+        const start = names.map((name) => currentByName[name] ?? 0)
+        const end = names.map((name) => Number(goal[name] ?? currentByName[name] ?? 0))
+        const trajectory = { joint_names: [...names], points: planJointTrajectory(start, end, this.velocityScaling) }
+
+        this.lastPlan = trajectory
+        if (planOut && typeof planOut === 'object') {
+          planOut.trajectory_ = trajectory
+          planOut.planning_time_ = 0
+        }
+
+        return MOVEIT_SUCCESS
+      } catch (err) {
+        if (err instanceof Error && err.message === STOP_MESSAGE) {
+          throw err
+        }
+        hooks.onLog('error', `[moveit] ${err instanceof Error ? err.message : String(err)}`)
+
+        return MOVEIT_FAILURE
+      }
+    }
+
+    async execute(planIn?: MoveItPlan): Promise<number> {
+      const trajectory = planIn?.trajectory_ ?? this.lastPlan
+
+      if (!trajectory || trajectory.points.length === 0) {
+        throw new Error('execute() needs a planned trajectory — call plan() first.')
+      }
+      for (const point of trajectory.points) {
+        assertAlive()
+        core.publish(COMMAND_TOPIC, 'std_msgs/msg/Float64MultiArray', { layout: { dim: [], data_offset: 0 }, data: [...point.positions] })
+        await sleep(point.dtMs)
+      }
+
+      return MOVEIT_SUCCESS
+    }
+
+    async move(): Promise<number> {
+      const plan: MoveItPlan = {}
+
+      if ((await this.plan(plan)) !== MOVEIT_SUCCESS) {
+        return MOVEIT_FAILURE
+      }
+
+      return this.execute(plan)
+    }
+  }
+
   async function spin(_node: Node): Promise<void> {
     spinning = true
     try {
@@ -262,6 +455,9 @@ export function createRclcppRuntime(core: RosCore, hooks: RuntimeHooks): RclcppR
   const rt = {
     Node,
     Rate,
+    MoveGroupInterface,
+    newPlan: () => ({ trajectory_: null, planning_time_: 0 }),
+    getLogger: (name: unknown) => ({ name: String(name ?? 'node') }),
     init: () => {
       initialized = true
     },

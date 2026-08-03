@@ -48,6 +48,11 @@ export function PluginRoot({ context }: Props) {
     setError(null)
   }, [])
 
+  const handleBack = useCallback(() => {
+    setCurrentStep((n) => Math.max(1, n - 1))
+    setError(null)
+  }, [])
+
   const handleReset = useCallback(() => {
     setCurrentStep(1)
     setError(null)
@@ -131,6 +136,11 @@ export function PluginRoot({ context }: Props) {
             )}
 
             <div className="flex gap-2">
+              {currentStep > 1 && (
+                <Button variant="outline" disabled={assignPhase === 'assigning'} onClick={handleBack}>
+                  {t.back}
+                </Button>
+              )}
               <Button variant="outline" disabled={assignPhase === 'assigning'} onClick={handleSkip}>
                 {t.skip}
               </Button>
@@ -153,7 +163,12 @@ export function PluginRoot({ context }: Props) {
               <p className="font-semibold text-lg">{t.allConfiguredTitle}</p>
               <p className="text-sm text-muted-foreground">{t.allConfiguredDescription(TOTAL_MOTORS)}</p>
             </div>
-            <Button onClick={() => setPagePhase('complete')}>{t.finish}</Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleBack}>
+                {t.back}
+              </Button>
+              <Button onClick={() => setPagePhase('complete')}>{t.finish}</Button>
+            </div>
           </div>
         )}
       </div>

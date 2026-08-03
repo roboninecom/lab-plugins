@@ -9,7 +9,18 @@ const state = {
   ready: false,
   stopped: false,
   queue: [],
+  loadedPackages: new Set(),
+  moveitInstalled: false,
+  moveitConfig: '{}',
+  pendingRequests: new Map(),
+  nextRequestId: 1,
 }
+
+const REMOVE_MOVEIT_SNIPPET = [
+  'import sys',
+  "for _k in [k for k in list(sys.modules) if k == 'moveit' or k.startswith('moveit.')]:",
+  '    del sys.modules[_k]',
+].join('\\n')
 
 function post(msg) {
   self.postMessage(msg)
@@ -42,6 +53,18 @@ const bridge = {
   ok() {
     return !state.stopped
   },
+  // MoveIt host services: requests are answered by the main thread, which has
+  // access to the platform kinematics.
+  solveIk(payload) {
+    return new Promise((resolve) => {
+      const id = state.nextRequestId++
+      state.pendingRequests.set(id, resolve)
+      post({ type: 'moveit', op: 'ik', id, payload: String(payload) })
+    })
+  },
+  moveitConfig() {
+    return state.moveitConfig
+  },
 }
 
 async function init(msg) {
@@ -53,10 +76,6 @@ async function init(msg) {
     stdout: (text) => post({ type: 'log', level: 'stdout', text }),
     stderr: (text) => post({ type: 'log', level: 'stderr', text }),
   })
-  for (const name of msg.packages) {
-    post({ type: 'progress', step: 'package', name })
-    await state.pyodide.loadPackage(name)
-  }
   post({ type: 'progress', step: 'rclpy' })
   state.pyodide.registerJsModule('_robonine_ros', bridge)
   state.pyodide.runPython(msg.shimCode)
@@ -76,11 +95,37 @@ function formatError(err) {
   return (head + 'Traceback (most recent call last):\\n  ' + tail).trim()
 }
 
+async function preparePackages(packages) {
+  for (const name of packages || []) {
+    if (state.loadedPackages.has(name)) {
+      continue
+    }
+    post({ type: 'progress', step: 'package', name })
+    await state.pyodide.loadPackage(name)
+    state.loadedPackages.add(name)
+  }
+}
+
+function prepareMoveit(moveit) {
+  if (moveit && moveit.code) {
+    state.moveitConfig = String(moveit.config || '{}')
+    if (!state.moveitInstalled) {
+      state.pyodide.runPython(moveit.code)
+      state.moveitInstalled = true
+    }
+  } else if (state.moveitInstalled) {
+    state.pyodide.runPython(REMOVE_MOVEIT_SNIPPET)
+    state.moveitInstalled = false
+  }
+}
+
 async function run(msg) {
   state.stopped = false
   state.queue.length = 0
   let namespace = null
   try {
+    await preparePackages(msg.packages)
+    prepareMoveit(msg.moveit)
     state.pyodide.runPython('import rclpy; rclpy._robonine_reset()')
     namespace = state.pyodide.toPy({ __name__: '__main__' })
     post({ type: 'started' })
@@ -110,6 +155,12 @@ self.onmessage = (event) => {
     state.queue.push({ topic: msg.topic, data: msg.data })
     if (state.queue.length > 200) {
       state.queue.shift()
+    }
+  } else if (msg.type === 'moveit' && msg.op === 'result') {
+    const resolve = state.pendingRequests.get(msg.id)
+    if (resolve) {
+      state.pendingRequests.delete(msg.id)
+      resolve(String(msg.payload))
     }
   } else if (msg.type === 'stop') {
     state.stopped = true

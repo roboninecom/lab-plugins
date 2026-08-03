@@ -1,6 +1,9 @@
-// Starter programs shown when the tool opens. Both do the same thing: wait
-// for /joint_states, then wave the first joint with a sine trajectory
-// published to the forward position controller.
+// Starter programs shown when the tool opens. The wave samples wait for
+// /joint_states, then wave one joint with a sine trajectory published to the
+// forward position controller. The MoveIt samples plan and execute pose /
+// named-configuration goals through the MoveIt 2 library (enable it in the
+// Libraries panel first). The template constants seed files created from the
+// Files panel.
 
 export const PYTHON_SAMPLE = `import rclpy
 from rclpy.node import Node
@@ -116,6 +119,134 @@ int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   rclcpp::spin(std::make_shared<WaveNode>());
+  rclcpp::shutdown();
+  return 0;
+}
+`
+
+export const MOVEIT_PYTHON_SAMPLE = `import rclpy
+from geometry_msgs.msg import PoseStamped
+from moveit.planning import MoveItPy
+
+
+def main():
+    rclpy.init()
+
+    moveit = MoveItPy(node_name='moveit_demo')
+    arm = moveit.get_planning_component('arm')
+
+    # 1. Plan to a pose goal — MoveIt solves the inverse kinematics for you.
+    goal = PoseStamped()
+    goal.header.frame_id = 'base_link'
+    goal.pose.position.x = 0.25
+    goal.pose.position.y = 0.10
+    goal.pose.position.z = 0.25
+    arm.set_start_state_to_current_state()
+    arm.set_goal_state(pose_stamped_msg=goal)
+
+    result = arm.plan()
+    if result:
+        print('Plan found: %d waypoints' % len(result.trajectory.points))
+        moveit.execute(result.trajectory, controllers=[])
+        print('Pose goal reached')
+    else:
+        print('Planning failed')
+
+    # 2. Plan back to the named home configuration.
+    arm.set_goal_state(configuration_name='home')
+    result = arm.plan()
+    if result:
+        moveit.execute(result.trajectory, controllers=[])
+        print('Back home')
+
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+`
+
+export const MOVEIT_CPP_SAMPLE = `#include <memory>
+
+#include <moveit/move_group_interface/move_group_interface.h>
+#include <rclcpp/rclcpp.hpp>
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<rclcpp::Node>("moveit_demo");
+  auto logger = rclcpp::get_logger("moveit_demo");
+
+  auto move_group = moveit::planning_interface::MoveGroupInterface(node, "arm");
+  move_group.setMaxVelocityScalingFactor(0.8);
+
+  // 1. Plan to a pose goal — MoveIt solves the inverse kinematics for you.
+  geometry_msgs::msg::Pose goal;
+  goal.position.x = 0.25;
+  goal.position.y = 0.10;
+  goal.position.z = 0.25;
+  move_group.setPoseTarget(goal);
+
+  moveit::planning_interface::MoveGroupInterface::Plan plan;
+  if (move_group.plan(plan) == moveit::core::MoveItErrorCode::SUCCESS) {
+    RCLCPP_INFO(logger, "Plan found: %zu waypoints", plan.trajectory_.points.size());
+    move_group.execute(plan);
+    RCLCPP_INFO(logger, "Pose goal reached");
+  } else {
+    RCLCPP_ERROR(logger, "Planning failed!");
+  }
+
+  // 2. Plan back to the named home configuration.
+  move_group.setNamedTarget("home");
+  move_group.move();
+  RCLCPP_INFO(logger, "Back home");
+
+  rclcpp::shutdown();
+  return 0;
+}
+`
+
+export const NEW_PYTHON_TEMPLATE = `import rclpy
+from rclpy.node import Node
+
+
+class MyNode(Node):
+    def __init__(self):
+        super().__init__('my_node')
+        self.get_logger().info('Node started')
+
+
+def main(args=None):
+    rclpy.init(args=args)
+    node = MyNode()
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+`
+
+export const NEW_CPP_TEMPLATE = `#include "rclcpp/rclcpp.hpp"
+
+class MyNode : public rclcpp::Node
+{
+public:
+  MyNode() : Node("my_node")
+  {
+    RCLCPP_INFO(get_logger(), "Node started");
+  }
+};
+
+int main(int argc, char ** argv)
+{
+  rclcpp::init(argc, argv);
+  rclcpp::spin(std::make_shared<MyNode>());
   rclcpp::shutdown();
   return 0;
 }
