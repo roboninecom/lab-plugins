@@ -68,6 +68,8 @@ function drawAxes(
   ppy: number,
   anchorX: number,
   anchorY: number,
+  mirrorH: boolean,
+  mirrorV: boolean,
   distCoeffs?: number[],
 ) {
   const [rx, ry, rz] = rvec
@@ -165,8 +167,10 @@ function drawAxes(
     }
 
     // Draw relative to anchor so distorted calibration doesn't shift axes off the badge.
-    const tipX = anchorX + (projTip[0] - projOrigin[0])
-    const tipY = anchorY + (projTip[1] - projOrigin[1])
+    // Detection runs on the unmirrored frame, so mirror the projected offsets back
+    // into the (possibly flipped) canvas the user is looking at.
+    const tipX = anchorX + (mirrorH ? -1 : 1) * (projTip[0] - projOrigin[0])
+    const tipY = anchorY + (mirrorV ? -1 : 1) * (projTip[1] - projOrigin[1])
 
     ctx.beginPath()
     ctx.moveTo(anchorX, anchorY)
@@ -195,6 +199,8 @@ function drawOverlay(
   w: number,
   h: number,
   markerSizeM: number,
+  mirrorH: boolean,
+  mirrorV: boolean,
   intrinsics?: { fx: number; fy: number; cx: number; cy: number; distCoeffs?: number[] },
 ) {
   const fx = intrinsics?.fx ?? 0.8 * Math.max(w, h)
@@ -203,25 +209,31 @@ function drawOverlay(
   const ppy = intrinsics?.cy ?? h / 2
   const distCoeffs = intrinsics?.distCoeffs
 
+  // Markers are detected on the raw (unmirrored) frame — ArUco bit patterns are
+  // chirality-sensitive and never match in a mirrored image — so map the detected
+  // pixel coordinates into the flipped canvas that is actually on screen.
+  const toCanvas = (pt: [number, number]): [number, number] => [mirrorH ? w - pt[0] : pt[0], mirrorV ? h - pt[1] : pt[1]]
+
   for (const { id, corners, pose } of detections) {
-    const cx = (corners[0][0] + corners[1][0] + corners[2][0] + corners[3][0]) / 4
-    const cy = (corners[0][1] + corners[1][1] + corners[2][1] + corners[3][1]) / 4
+    const quad = corners.map(toCanvas)
+    const cx = (quad[0][0] + quad[1][0] + quad[2][0] + quad[3][0]) / 4
+    const cy = (quad[0][1] + quad[1][1] + quad[2][1] + quad[3][1]) / 4
     const text = String(id)
     const pad = 6
     const th = 28
 
     ctx.beginPath()
-    ctx.moveTo(corners[0][0], corners[0][1])
-    ctx.lineTo(corners[1][0], corners[1][1])
-    ctx.lineTo(corners[2][0], corners[2][1])
-    ctx.lineTo(corners[3][0], corners[3][1])
+    ctx.moveTo(quad[0][0], quad[0][1])
+    ctx.lineTo(quad[1][0], quad[1][1])
+    ctx.lineTo(quad[2][0], quad[2][1])
+    ctx.lineTo(quad[3][0], quad[3][1])
     ctx.closePath()
     ctx.strokeStyle = '#22c55e'
     ctx.lineWidth = 3
     ctx.stroke()
 
     if (pose) {
-      drawAxes(ctx, pose.rvec, pose.tvec, markerSizeM, fx, fy, ppx, ppy, cx, cy, distCoeffs)
+      drawAxes(ctx, pose.rvec, pose.tvec, markerSizeM, fx, fy, ppx, ppy, cx, cy, mirrorH, mirrorV, distCoeffs)
     }
 
     ctx.font = 'bold 18px monospace'
@@ -241,6 +253,32 @@ function drawOverlay(
   }
 }
 
+// CameraView.captureFrame() bakes the H/V flip into the pixels, and a mirrored
+// ArUco marker matches no dictionary entry — its bit pattern is chirality-sensitive.
+// Grab the video straight instead and mirror only the overlay coordinates.
+function captureRawFrame(video: HTMLVideoElement, cache: { current: HTMLCanvasElement | null }): ImageData | null {
+  const canvas = cache.current ?? document.createElement('canvas')
+
+  cache.current = canvas
+
+  if (video.readyState < 2 || video.videoWidth === 0) {
+    return null
+  }
+
+  canvas.width = video.videoWidth
+  canvas.height = video.videoHeight
+
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+
+  if (!ctx) {
+    return null
+  }
+
+  ctx.drawImage(video, 0, 0)
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height)
+}
+
 const DICT_OPTIONS = Object.entries(ARUCO_DICTS) as Array<[ArucoDictKey, number]>
 
 export function PluginRoot({ context }: Props) {
@@ -254,6 +292,7 @@ export function PluginRoot({ context }: Props) {
   const [detections, setDetections] = useState<ArucoDetection[]>([])
   const [camPose, setCamPose] = useState<FKResult | undefined>(undefined)
   const cameraViewRef = useRef<CameraViewHandle>(null)
+  const rawFrameCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   // Refs so the rAF loop sees the latest values without restarting.
   const arucoReadyRef = useRef(arucoReady)
@@ -355,7 +394,7 @@ export function PluginRoot({ context }: Props) {
         const calibration = cameraCalibrationRef.current ?? undefined
         const w = canvas.width
         const h = canvas.height
-        const imageData = cameraView.captureFrame()
+        const imageData = captureRawFrame(video, rawFrameCanvasRef)
         const sizeCm = markerSizeCmRef.current
         const markerSizeM = sizeCm > 0 ? sizeCm / 100 : undefined
 
@@ -390,7 +429,7 @@ export function PluginRoot({ context }: Props) {
         }
       }
 
-      drawOverlay(ctx, lastResult, canvas.width, canvas.height, markerSizeCmRef.current / 100, lastIntrinsics)
+      drawOverlay(ctx, lastResult, canvas.width, canvas.height, markerSizeCmRef.current / 100, cameraView.mirrorH, cameraView.mirrorV, lastIntrinsics)
     }
 
     animId = requestAnimationFrame(loop)

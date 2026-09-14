@@ -20,6 +20,7 @@ type T = {
   skip: string
   back: string
   error: string
+  notApplied: string
 }
 
 export const translations: Record<string, T> = {
@@ -52,6 +53,7 @@ export const translations: Record<string, T> = {
     skip: 'Skip',
     back: 'Back',
     error: 'Something went wrong. Please try again.',
+    notApplied: 'The motor did not accept the new ID. Check that exactly one motor is connected to the board, then try again.',
   },
   ru: {
     title: 'Назначить ID моторов',
@@ -82,5 +84,6 @@ export const translations: Record<string, T> = {
     skip: 'Пропустить',
     back: 'Назад',
     error: 'Что-то пошло не так. Попробуйте ещё раз.',
+    notApplied: 'Мотор не принял новый ID. Проверьте, что к плате подключён только один мотор, и попробуйте ещё раз.',
   },
 }

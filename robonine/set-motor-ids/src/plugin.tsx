@@ -5,6 +5,14 @@ import { translations } from './translations'
 
 const TOTAL_MOTORS = 6
 
+/**
+ * Rejection message the host's Feetech driver uses when the servo's ID register
+ * does not hold the requested value after the write — a refused write rather than
+ * a broken connection. Duplicated because plugins cannot import host modules; the
+ * source of truth is SET_ID_NOT_APPLIED in services/motors/feetechSTSDriver.ts.
+ */
+const SET_ID_NOT_APPLIED = 'Servo rejected the ID write'
+
 type PagePhase = 'idle' | 'assigning' | 'complete'
 type AssignPhase = 'idle' | 'assigning'
 
@@ -37,11 +45,13 @@ export function PluginRoot({ context }: Props) {
       await context.servo.setId(currentStep)
       setCurrentStep((n) => n + 1)
     } catch (e) {
-      setError(e instanceof Error ? e.message : t.error)
+      const message = e instanceof Error ? e.message : ''
+
+      setError(message === SET_ID_NOT_APPLIED ? t.notApplied : message || t.error)
     } finally {
       setAssignPhase('idle')
     }
-  }, [context.servo, currentStep, t.error])
+  }, [context.servo, currentStep, t.error, t.notApplied])
 
   const handleSkip = useCallback(() => {
     setCurrentStep((n) => n + 1)
