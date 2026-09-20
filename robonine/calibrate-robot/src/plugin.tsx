@@ -33,6 +33,15 @@ export function PluginRoot({ context }: Props) {
 
   // Keep refs in sync with context so the polling closure always has fresh values.
   const robotConfigRef = useRef(context.robotConfig)
+
+  // Highest servo id first — the gripper at the top, the shoulder pan at the
+  // bottom — whatever order the URDF happens to list the joints in.
+  const sortedJoints = useMemo(() => {
+    const servoOf = (j: JointInfo) => robotConfigRef.current?.jointServoId[j.name] ?? 0
+
+    return [...joints].sort((a, b) => servoOf(b) - servoOf(a))
+  }, [joints])
+
   const servoRef = useRef(context.servo)
   const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1) + '°'
 
@@ -85,12 +94,15 @@ export function PluginRoot({ context }: Props) {
           const newLiveRaw: Record<string, { min: number; max: number }> = {}
           let movedMotorId: number | null = null
 
-          for (let i = 0; i < currentJoints.length; i++) {
-            const servoId = currentJoints.length - i
+          for (const j of currentJoints) {
+            const servoId = cfg.jointServoId[j.name]
+
+            if (servoId === undefined) {
+              continue
+            }
 
             try {
               const raw = await servoRef.current.readPosition(servoId)
-              const j = currentJoints[i]
               const val = cfg.encoderToJoint(servoId, raw)
               const r = motorRangesRef.current[servoId]
               const prev = prevRawRef.current[servoId]
@@ -119,12 +131,12 @@ export function PluginRoot({ context }: Props) {
 
           setValues((prev) => ({ ...prev, ...newVals }))
 
-          for (let i = 0; i < currentJoints.length; i++) {
-            const servoId = currentJoints.length - i
-            const r = motorRangesRef.current[servoId]
+          for (const j of currentJoints) {
+            const servoId = cfg.jointServoId[j.name]
+            const r = servoId === undefined ? undefined : motorRangesRef.current[servoId]
 
             if (r) {
-              newLiveRaw[currentJoints[i].name] = { min: r.min, max: r.max }
+              newLiveRaw[j.name] = { min: r.min, max: r.max }
             }
           }
 
@@ -169,11 +181,11 @@ export function PluginRoot({ context }: Props) {
       jointsRef.current = loadedJoints
       setJoints(loadedJoints)
 
-      for (let i = 0; i < loadedJoints.length; i++) {
-        const servoId = loadedJoints.length - i
+      for (const j of loadedJoints) {
+        const servoId = cfg?.jointServoId[j.name]
 
-        if (cfg) {
-          initial[loadedJoints[i].name] = cfg.neutralJointValue(servoId)
+        if (cfg && servoId !== undefined) {
+          initial[j.name] = cfg.neutralJointValue(servoId)
         }
       }
 
@@ -194,10 +206,14 @@ export function PluginRoot({ context }: Props) {
     setLastMovedMotorId(null)
     setSaving(true)
 
-    for (let i = 0; i < currentJoints.length; i++) {
-      const servoId = currentJoints.length - i
+    for (const j of currentJoints) {
+      const servoId = cfg?.jointServoId[j.name]
+
+      if (servoId === undefined) {
+        continue
+      }
+
       const range = motorRangesRef.current[servoId]
-      const j = currentJoints[i]
       const rangeInRad = range ? (range.max - range.min) * RAW_TO_RAD : 0
 
       if (range && rangeInRad >= MIN_CALIBRATION_RANGE_RAD) {
@@ -289,9 +305,8 @@ export function PluginRoot({ context }: Props) {
       <div className="space-y-4 lg:w-70 lg:shrink-0">
         <div className="text-xs text-muted-foreground">{t.jointsMoved(movedJoints.size, joints.length)}</div>
 
-        {[...joints].reverse().map((j) => {
-          const origIdx = joints.findIndex((jj) => jj.name === j.name)
-          const servoId = joints.length - origIdx
+        {sortedJoints.map((j) => {
+          const servoId = robotConfigRef.current?.jointServoId[j.name] ?? 0
           const isSignificant = lastMovedMotorId === servoId
           const isMoved = movedJoints.has(j.name)
           const liveRaw = liveRawRanges[j.name]
