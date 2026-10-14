@@ -1,7 +1,17 @@
 import type { CameraHandle, JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
-import { AlertTriangle, Camera, CameraOff, CheckCircle2, Radio, XCircle } from 'lucide-react'
+import { AlertTriangle, Camera, CameraOff, CheckCircle2, Maximize2, Minimize2, Radio, XCircle } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
+
+const SPLIT_VIEW_STORAGE_KEY = 'robonine.teleoperate.splitView'
+
+function readSplitViewPreference(): boolean {
+  try {
+    return localStorage.getItem(SPLIT_VIEW_STORAGE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
 
 interface Props {
   context: PluginContext
@@ -15,6 +25,8 @@ export function PluginRoot({ context }: Props) {
   const [isRunning, setIsRunning] = useState(false)
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
   const [cameraVisible, setCameraVisible] = useState(true)
+  // Split view: the 3D area is divided top/bottom between the world view and the camera feed.
+  const [splitView, setSplitView] = useState(readSplitViewPreference)
   const viewRef = useRef<WorldViewApi>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const stopLoopRef = useRef<(() => void) | null>(null)
@@ -42,12 +54,27 @@ export function PluginRoot({ context }: Props) {
     }
   }, [context.cameras, selectedCameraId])
 
-  // Bind camera stream to video element.
+  const splitActive = splitView && cameraVisible && selectedCamera !== null
+
+  // Bind camera stream to video element. The element remounts when it moves between
+  // the sidebar preview and the split pane, so rebind on every layout change.
   useEffect(() => {
     if (videoRef.current && selectedCamera?.stream) {
       videoRef.current.srcObject = selectedCamera.stream
     }
-  }, [selectedCamera, isRunning, cameraVisible])
+  }, [selectedCamera, isRunning, cameraVisible, splitActive])
+
+  const toggleSplitView = useCallback(() => {
+    setSplitView((prev) => {
+      try {
+        localStorage.setItem(SPLIT_VIEW_STORAGE_KEY, prev ? '0' : '1')
+      } catch {
+        // storage unavailable — the toggle still works for this session
+      }
+
+      return !prev
+    })
+  }, [])
 
   // Stop the loop if either arm disconnects while running.
   useEffect(() => {
@@ -196,8 +223,26 @@ export function PluginRoot({ context }: Props) {
   if (isRunning) {
     return (
       <div className="flex flex-col gap-6 flex-1 min-h-0 lg:flex-row">
-        <div className="overflow-hidden rounded-lg border flex-1 min-h-0">
-          <context.WorldView ref={viewRef} motionMode="instant" onLoad={handleWorldViewLoad} />
+        <div className="flex flex-col gap-3 flex-1 min-h-0">
+          <div className="overflow-hidden rounded-lg border flex-1 min-h-0">
+            <context.WorldView ref={viewRef} motionMode="instant" onLoad={handleWorldViewLoad} />
+          </div>
+
+          {splitActive && (
+            <div className="relative overflow-hidden rounded-lg border bg-black flex-1 min-h-0">
+              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-contain" />
+              <Button
+                size="icon"
+                variant="secondary"
+                className="absolute top-2 right-2 size-8 opacity-80 hover:opacity-100"
+                title={t.exitSplitView}
+                aria-label={t.exitSplitView}
+                onClick={toggleSplitView}
+              >
+                <Minimize2 className="w-4 h-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="space-y-4 lg:w-64 lg:shrink-0">
@@ -219,9 +264,12 @@ export function PluginRoot({ context }: Props) {
 
           {selectedCamera && (
             <>
-              {cameraVisible && (
-                <div className="rounded-lg overflow-hidden border bg-black">
+              {cameraVisible && !splitActive && (
+                <div className="relative rounded-lg overflow-hidden border bg-black">
                   <video ref={videoRef} autoPlay playsInline muted style={{ width: '240px', height: 'auto', display: 'block' }} />
+                  <Button size="icon" variant="secondary" className="absolute top-2 right-2 size-8 opacity-80 hover:opacity-100" title={t.splitView} aria-label={t.splitView} onClick={toggleSplitView}>
+                    <Maximize2 className="w-4 h-4" />
+                  </Button>
                 </div>
               )}
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">

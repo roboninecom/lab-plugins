@@ -21,6 +21,8 @@ export const translations = {
     leader: 'Leader arm',
     hideCamera: 'Hide camera',
     showCamera: 'Show camera',
+    splitView: 'Show camera below the 3D view',
+    exitSplitView: 'Back to small preview',
     stop: 'Stop',
   },
   ru: {
@@ -41,6 +43,8 @@ export const translations = {
     leader: 'Ведущая рука',
     hideCamera: 'Скрыть камеру',
     showCamera: 'Показать камеру',
+    splitView: 'Показать камеру под 3D-видом',
+    exitSplitView: 'Вернуть маленькое превью',
     stop: 'Остановить',
   },
 } satisfies Record<string, Record<string, string>>
