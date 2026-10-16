@@ -19,7 +19,7 @@ type T = {
   bought: string
   motors: (n: number) => string
   electronics: (n: number) => string
-  combinedNotice: string
+  rods: (n: number) => string
   estimateNote: string
   reset: string
 }
@@ -51,7 +51,7 @@ export const translations: Record<string, T> = {
     bought: 'Not printed — keep as is',
     motors: (n) => `${n} × STS3215 servo`,
     electronics: (n) => `${n} × camera module`,
-    combinedNotice: 'This model merges motors into the printed links, so whole links are recoloured. Motors on the real arm stay black.',
+    rods: (n) => `${n} × steel guide rod`,
     estimateNote: 'Weights are estimates for one arm at ~15 % infill. Check your slicer before ordering.',
     reset: 'Reset',
   },
@@ -81,7 +81,7 @@ export const translations: Record<string, T> = {
     bought: 'Не печатается — остаётся как есть',
     motors: (n) => `${n} × сервопривод STS3215`,
     electronics: (n) => `${n} × модуль камеры`,
-    combinedNotice: 'В этой модели моторы слиты с печатными звеньями, поэтому перекрашиваются звенья целиком. На настоящей руке моторы остаются чёрными.',
+    rods: (n) => `${n} × стальная направляющая`,
     estimateNote: 'Вес — оценка для одной руки при заполнении ~15 %. Перед заказом проверьте в слайсере.',
     reset: 'Сбросить',
   },

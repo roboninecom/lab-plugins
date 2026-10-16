@@ -10,21 +10,23 @@ export type Zone = (typeof ZONES)[number]
  * plastic     — a printed part: the user prints it in the skin's filament.
  * motor       — a bought STS3215 servo, stays its factory black.
  * electronics — a bought board or camera, stays as modelled.
- * combined    — printed parts and motors merged into one mesh by the CAD export
- *               (SO-ARM102), so the whole link takes the plastic colour.
+ * hardware    — bought metal parts (guide rods), stay as modelled.
  */
-export type PartKind = 'plastic' | 'motor' | 'electronics' | 'combined'
+export type PartKind = 'plastic' | 'motor' | 'electronics' | 'hardware'
 
 export interface ClassifiedPart extends RobotPartInfo {
   kind: PartKind
   zone: Zone
   label: LocaleText
+  /** How many physical items the mesh holds (a split-out servo mesh can carry two). */
+  count: number
 }
 
 interface CatalogEntry {
   kind: PartKind
   zone: Zone
   label: LocaleText
+  count?: number
 }
 
 /**
@@ -57,15 +59,22 @@ const CATALOG: Record<string, CatalogEntry> = {
   sts3215_03a_no_horn_v1: { kind: 'motor', zone: 'base', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
   hand_servo: { kind: 'motor', zone: 'gripper', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
   camera: { kind: 'electronics', zone: 'wrist', label: { en: 'Camera module', ru: 'Модуль камеры' } },
-  // SO-ARM102: one merged mesh per link, motors included
-  base_link: { kind: 'combined', zone: 'base', label: { en: 'Base', ru: 'Основание' } },
-  link1_1: { kind: 'combined', zone: 'shoulder', label: { en: 'Shoulder', ru: 'Плечо' } },
-  link2_1: { kind: 'combined', zone: 'upperArm', label: { en: 'Upper arm', ru: 'Плечевое звено' } },
-  link3_1: { kind: 'combined', zone: 'forearm', label: { en: 'Forearm', ru: 'Предплечье' } },
-  link4_1: { kind: 'combined', zone: 'wrist', label: { en: 'Wrist', ru: 'Запястье' } },
-  link5_1: { kind: 'combined', zone: 'gripper', label: { en: 'Gripper', ru: 'Захват' } },
-  clamp1_1: { kind: 'combined', zone: 'gripper', label: { en: 'Left jaw', ru: 'Левая губка' } },
-  clamp2_1: { kind: 'combined', zone: 'gripper', label: { en: 'Right jaw', ru: 'Правая губка' } },
+  // SO-ARM102: the CAD export fuses each link's parts into one mesh; the
+  // importer (--split-servos) splits the servos and guide rods back out.
+  base_link: { kind: 'plastic', zone: 'base', label: { en: 'Base', ru: 'Основание' } },
+  link1_1: { kind: 'plastic', zone: 'shoulder', label: { en: 'Shoulder', ru: 'Плечо' } },
+  link2_1: { kind: 'plastic', zone: 'upperArm', label: { en: 'Upper arm', ru: 'Плечевое звено' } },
+  link3_1: { kind: 'plastic', zone: 'forearm', label: { en: 'Forearm', ru: 'Предплечье' } },
+  link4_1: { kind: 'plastic', zone: 'wrist', label: { en: 'Wrist', ru: 'Запястье' } },
+  link5_1: { kind: 'plastic', zone: 'gripper', label: { en: 'Gripper', ru: 'Захват' } },
+  clamp1_1: { kind: 'plastic', zone: 'gripper', label: { en: 'Left jaw', ru: 'Левая губка' } },
+  clamp2_1: { kind: 'plastic', zone: 'gripper', label: { en: 'Right jaw', ru: 'Правая губка' } },
+  link1_1_servo: { kind: 'motor', zone: 'shoulder', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
+  link2_1_servo: { kind: 'motor', zone: 'upperArm', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' }, count: 2 },
+  link3_1_servo: { kind: 'motor', zone: 'forearm', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
+  link4_1_servo: { kind: 'motor', zone: 'wrist', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
+  link5_1_servo: { kind: 'motor', zone: 'gripper', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
+  link5_1_rod: { kind: 'hardware', zone: 'gripper', label: { en: 'Steel guide rod', ru: 'Стальная направляющая' }, count: 2 },
 }
 
 /** Zone of a part the catalog does not know, from the URDF link it hangs off. */
@@ -89,13 +98,13 @@ export function classifyParts(parts: RobotPartInfo[]): ClassifiedPart[] {
     const zone = known?.zone ?? LINK_ZONES.find(([re]) => re.test(part.link))?.[1] ?? 'base'
     const kind = known?.kind ?? (part.material === 'sts3215' ? 'motor' : 'plastic')
 
-    return { ...part, kind, zone, label: known?.label ?? { en: part.mesh, ru: part.mesh } }
+    return { ...part, kind, zone, label: known?.label ?? { en: part.mesh, ru: part.mesh }, count: known?.count ?? 1 }
   })
 }
 
-/** True for parts a skin repaints: printed plastic, or merged meshes that are mostly plastic. */
+/** True for parts a skin repaints: printed plastic only — bought parts keep their own colour. */
 export function isPaintable(part: ClassifiedPart): boolean {
-  return part.kind === 'plastic' || part.kind === 'combined'
+  return part.kind === 'plastic'
 }
 
 /** PLA density, g/cm³. */

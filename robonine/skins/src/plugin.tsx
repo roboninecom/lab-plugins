@@ -129,9 +129,10 @@ export function PluginRoot({ context }: Props) {
 
   const totalGrams = shopping.reduce((sum, row) => sum + row.grams, 0)
   const spools = shopping.reduce((sum, row) => sum + Math.max(1, Math.ceil(row.grams / SPOOL_GRAMS)), 0)
-  const motorCount = parts.filter((p) => p.kind === 'motor').length
-  const electronicsCount = parts.filter((p) => p.kind === 'electronics').length
-  const hasCombined = parts.some((p) => p.kind === 'combined')
+  const countOf = (kind: ClassifiedPart['kind']) => parts.filter((p) => p.kind === kind).reduce((sum, p) => sum + p.count, 0)
+  const motorCount = countOf('motor')
+  const electronicsCount = countOf('electronics')
+  const hardwareCount = countOf('hardware')
 
   const chooseModel = (id: string) => {
     if (id !== modelId) {
@@ -272,7 +273,6 @@ export function PluginRoot({ context }: Props) {
         <div className="space-y-2">
           <p className="text-sm font-medium">{t.shoppingList}</p>
           <p className="text-xs text-muted-foreground">{t.shoppingHint}</p>
-          {hasCombined && <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{t.combinedNotice}</p>}
           <div className="rounded-lg border divide-y" data-id="skins-shopping-list">
             {shopping.map((row) => (
               <div
@@ -303,11 +303,12 @@ export function PluginRoot({ context }: Props) {
                 </a>
               </div>
             ))}
-            {(motorCount > 0 || electronicsCount > 0) && (
+            {(motorCount > 0 || electronicsCount > 0 || hardwareCount > 0) && (
               <div className="px-3 py-2.5 text-xs text-muted-foreground space-y-0.5">
                 <p className="font-medium">{t.bought}</p>
                 {motorCount > 0 && <p>{t.motors(motorCount)}</p>}
                 {electronicsCount > 0 && <p>{t.electronics(electronicsCount)}</p>}
+                {hardwareCount > 0 && <p>{t.rods(hardwareCount)}</p>}
               </div>
             )}
           </div>
