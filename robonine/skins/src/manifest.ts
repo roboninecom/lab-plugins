@@ -11,8 +11,8 @@ const manifestWithMenu: PluginManifest & { collapseMenu?: boolean } = {
     ru: 'Скины робота',
   },
   description: {
-    en: 'Dress your arm up for Halloween, Christmas and more: preview a colour scheme in 3D and get the PLA filament list to print it.',
-    ru: 'Нарядите руку к Хэллоуину, Новому году и не только: примерьте раскраску в 3D и получите список PLA-пластика для печати.',
+    en: 'Dress your arm up for Halloween or Christmas and get the PLA to print it.',
+    ru: 'Нарядите руку к Хэллоуину или Новому году и получите список PLA для печати.',
   },
   icon: 'palette',
   scopes: [],

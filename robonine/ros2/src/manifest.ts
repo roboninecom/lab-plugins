@@ -11,8 +11,8 @@ const manifestWithMenu: PluginManifest & { collapseMenu?: boolean } = {
     ru: 'Лаборатория ROS2',
   },
   description: {
-    en: 'Write real ROS2 nodes in Python (rclpy) or C++ (rclcpp) and run them right in the browser, with optional MoveIt 2 motion planning. Your node talks to the robot through simulated topics — no ROS2 installation needed.',
-    ru: 'Пишите настоящие ноды ROS2 на Python (rclpy) или C++ (rclcpp) и запускайте их прямо в браузере, с опциональным планированием движений MoveIt 2. Нода управляет роботом через симулируемые топики — установка ROS2 не нужна.',
+    en: 'Run ROS2 nodes in Python or C++ right in the browser, no install needed.',
+    ru: 'Запускайте ноды ROS2 на Python или C++ прямо в браузере, без установки.',
   },
   icon: 'grip',
   scopes: ['robot.read', 'robot.control'],
