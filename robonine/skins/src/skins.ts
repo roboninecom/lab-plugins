@@ -21,14 +21,14 @@ export const SKINS: Skin[] = [
   {
     id: 'classic',
     name: { en: 'Classic', ru: 'Классика' },
-    description: { en: 'The robonine yellow the kit ships in.', ru: 'Фирменный жёлтый robonine, как в наборе.' },
+    description: { en: 'All black, the way robonine kits ship.', ru: 'Полностью чёрный, как наборы robonine.' },
     zones: {
-      base: 'basic-sunflower-yellow',
-      shoulder: 'basic-sunflower-yellow',
-      upperArm: 'basic-sunflower-yellow',
-      forearm: 'basic-sunflower-yellow',
-      wrist: 'basic-sunflower-yellow',
-      gripper: 'basic-sunflower-yellow',
+      base: 'basic-black',
+      shoulder: 'basic-black',
+      upperArm: 'basic-black',
+      forearm: 'basic-black',
+      wrist: 'basic-black',
+      gripper: 'basic-black',
     },
   },
   {
