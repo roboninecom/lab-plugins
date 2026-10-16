@@ -1,5 +1,5 @@
-import type { CameraHandle, JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
 import { AlertTriangle, Camera, CameraOff, CheckCircle2, Maximize2, Minimize2, Radio, XCircle } from 'lucide-react'
+import type { CameraHandle, JointInfo, PluginContext, WorldViewApi } from '@robonine/plugin-sdk'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { translations } from './translations'
 
@@ -19,7 +19,7 @@ interface Props {
 
 export function PluginRoot({ context }: Props) {
   const t = useMemo(() => translations[context.locale as keyof typeof translations] ?? translations.en, [context.locale])
-  const { Button } = context.ui
+  const { Button, CameraView } = context.ui
   const follower = context.robot('default')
   const leader = context.robot('leader')
   const [isRunning, setIsRunning] = useState(false)
@@ -28,7 +28,6 @@ export function PluginRoot({ context }: Props) {
   // Split view: the 3D area is divided top/bottom between the world view and the camera feed.
   const [splitView, setSplitView] = useState(readSplitViewPreference)
   const viewRef = useRef<WorldViewApi>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
   const stopLoopRef = useRef<(() => void) | null>(null)
   const cleanupEmergencyStopRef = useRef<(() => void) | null>(null)
   const sortedJointNamesRef = useRef<string[]>([])
@@ -55,14 +54,6 @@ export function PluginRoot({ context }: Props) {
   }, [context.cameras, selectedCameraId])
 
   const splitActive = splitView && cameraVisible && selectedCamera !== null
-
-  // Bind camera stream to video element. The element remounts when it moves between
-  // the sidebar preview and the split pane, so rebind on every layout change.
-  useEffect(() => {
-    if (videoRef.current && selectedCamera?.stream) {
-      videoRef.current.srcObject = selectedCamera.stream
-    }
-  }, [selectedCamera, isRunning, cameraVisible, splitActive])
 
   const toggleSplitView = useCallback(() => {
     setSplitView((prev) => {
@@ -229,19 +220,20 @@ export function PluginRoot({ context }: Props) {
           </div>
 
           {splitActive && (
-            <div className="relative overflow-hidden rounded-lg border bg-black flex-1 min-h-0">
-              <video ref={videoRef} autoPlay playsInline muted className="absolute inset-0 w-full h-full object-contain" />
+            // CameraView applies the user's saved flip (set in any camera tool) and
+            // owns the flip buttons in its top-right corner.
+            <CameraView stream={selectedCamera.stream} className="flex-1 min-h-0">
               <Button
                 size="icon"
                 variant="secondary"
-                className="absolute top-2 right-2 size-8 opacity-80 hover:opacity-100"
+                className="absolute bottom-2 right-2 size-8 opacity-80 hover:opacity-100"
                 title={t.exitSplitView}
                 aria-label={t.exitSplitView}
                 onClick={toggleSplitView}
               >
                 <Minimize2 className="w-4 h-4" />
               </Button>
-            </div>
+            </CameraView>
           )}
         </div>
 
@@ -265,12 +257,18 @@ export function PluginRoot({ context }: Props) {
           {selectedCamera && (
             <>
               {cameraVisible && !splitActive && (
-                <div className="relative rounded-lg overflow-hidden border bg-black">
-                  <video ref={videoRef} autoPlay playsInline muted style={{ width: '240px', height: 'auto', display: 'block' }} />
-                  <Button size="icon" variant="secondary" className="absolute top-2 right-2 size-8 opacity-80 hover:opacity-100" title={t.splitView} aria-label={t.splitView} onClick={toggleSplitView}>
+                <CameraView stream={selectedCamera.stream} className="w-full aspect-video">
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="absolute bottom-2 right-2 size-8 opacity-80 hover:opacity-100"
+                    title={t.splitView}
+                    aria-label={t.splitView}
+                    onClick={toggleSplitView}
+                  >
                     <Maximize2 className="w-4 h-4" />
                   </Button>
-                </div>
+                </CameraView>
               )}
               <div className="flex items-center gap-1.5 text-xs text-muted-foreground px-1">
                 <Camera className="w-3.5 h-3.5 shrink-0" />
