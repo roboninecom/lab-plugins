@@ -62,11 +62,11 @@ const CATALOG: Record<string, CatalogEntry> = {
   // SO-ARM102: the CAD export fuses each link's parts into one mesh; the
   // importer (--split-servos) splits the servos and guide rods back out.
   base_link: { kind: 'plastic', zone: 'base', label: { en: 'Base', ru: 'Основание' } },
-  link1_1: { kind: 'plastic', zone: 'shoulder', label: { en: 'Shoulder', ru: 'Плечо' } },
-  link2_1: { kind: 'plastic', zone: 'upperArm', label: { en: 'Upper arm', ru: 'Плечевое звено' } },
-  link3_1: { kind: 'plastic', zone: 'forearm', label: { en: 'Forearm', ru: 'Предплечье' } },
-  link4_1: { kind: 'plastic', zone: 'wrist', label: { en: 'Wrist', ru: 'Запястье' } },
-  link5_1: { kind: 'plastic', zone: 'gripper', label: { en: 'Gripper', ru: 'Захват' } },
+  link1_1_plastic: { kind: 'plastic', zone: 'shoulder', label: { en: 'Shoulder', ru: 'Плечо' } },
+  link2_1_plastic: { kind: 'plastic', zone: 'upperArm', label: { en: 'Upper arm', ru: 'Плечевое звено' } },
+  link3_1_plastic: { kind: 'plastic', zone: 'forearm', label: { en: 'Forearm', ru: 'Предплечье' } },
+  link4_1_plastic: { kind: 'plastic', zone: 'wrist', label: { en: 'Wrist', ru: 'Запястье' } },
+  link5_1_plastic: { kind: 'plastic', zone: 'gripper', label: { en: 'Gripper', ru: 'Захват' } },
   clamp1_1: { kind: 'plastic', zone: 'gripper', label: { en: 'Left jaw', ru: 'Левая губка' } },
   clamp2_1: { kind: 'plastic', zone: 'gripper', label: { en: 'Right jaw', ru: 'Правая губка' } },
   link1_1_servo: { kind: 'motor', zone: 'shoulder', label: { en: 'STS3215 servo', ru: 'Сервопривод STS3215' } },
