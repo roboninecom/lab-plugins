@@ -21,6 +21,7 @@ export interface Copies {
   colDescription: string
   sectionEeprom: string
   sectionRam: string
+  sectionFactory: string
   eepromNote: string
   noData: string
   writeSuccess: string
@@ -69,6 +70,7 @@ export const translations: Record<string, Copies> = {
     colDescription: 'Description',
     sectionEeprom: 'EEPROM — non-volatile',
     sectionRam: 'RAM — volatile',
+    sectionFactory: 'Factory parameters — read-only',
     eepromNote: 'EEPROM writes are automatically wrapped in a Lock/Unlock cycle.',
     noData: '—',
     writeSuccess: 'Register written',
@@ -115,6 +117,7 @@ export const translations: Record<string, Copies> = {
     colDescription: 'Описание',
     sectionEeprom: 'EEPROM — энергонезависимая память',
     sectionRam: 'RAM — оперативная память',
+    sectionFactory: 'Заводские параметры — только чтение',
     eepromNote: 'Запись в EEPROM автоматически выполняется с разблокировкой и повторной блокировкой регистра Lock.',
     noData: '—',
     writeSuccess: 'Регистр записан',
