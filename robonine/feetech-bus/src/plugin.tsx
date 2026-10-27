@@ -1,4 +1,14 @@
-import { REGISTER_MAP, ADDR_LOCK, EEPROM_BLOCK_LEN, RAM_BLOCK_LEN, RAM_START, decodeRegisters, type StsRegister } from './registerMap'
+import {
+  REGISTER_MAP,
+  ADDR_LOCK,
+  EEPROM_BLOCK_LEN,
+  RAM_BLOCK_LEN,
+  RAM_START,
+  FACTORY_BLOCK_LEN,
+  FACTORY_START,
+  decodeRegisters,
+  type StsRegister,
+} from './registerMap'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { translations, type Copies } from './translations'
 import type { PluginContext } from '@robonine/plugin-sdk'
@@ -171,8 +181,17 @@ export function PluginRoot({ context }: Props) {
     setReading(true)
     abortRef.current = false
     try {
-      const [eeprom, ram] = await Promise.all([context.servo.readRegisters(servoId, 0, EEPROM_BLOCK_LEN), context.servo.readRegisters(servoId, RAM_START, RAM_BLOCK_LEN)])
-      const raw = [...eeprom, ...ram]
+      const [eeprom, ram, factory] = await Promise.all([
+        context.servo.readRegisters(servoId, 0, EEPROM_BLOCK_LEN),
+        context.servo.readRegisters(servoId, RAM_START, RAM_BLOCK_LEN),
+        // older firmware may not answer past the RAM block; leave those rows empty
+        context.servo.readRegisters(servoId, FACTORY_START, FACTORY_BLOCK_LEN).catch(() => []),
+      ])
+      const raw: number[] = []
+
+      eeprom.forEach((b, i) => (raw[i] = b))
+      ram.forEach((b, i) => (raw[RAM_START + i] = b))
+      factory.forEach((b, i) => (raw[FACTORY_START + i] = b))
 
       setReadValues(decodeRegisters(raw))
       setFoundIds(null)
@@ -304,6 +323,7 @@ export function PluginRoot({ context }: Props) {
   const matchesFilter = (r: (typeof REGISTER_MAP)[0]) => !filterLower || r.name.toLowerCase().includes(filterLower) || r.description.toLowerCase().includes(filterLower)
   const eepromRegs = REGISTER_MAP.filter((r) => r.area === 'EEPROM' && matchesFilter(r))
   const ramRegs = REGISTER_MAP.filter((r) => r.area === 'RAM' && matchesFilter(r))
+  const factoryRegs = REGISTER_MAP.filter((r) => r.area === 'FACTORY' && matchesFilter(r))
 
   return (
     <div className="flex flex-col h-full min-h-0 gap-0">
@@ -426,6 +446,30 @@ export function PluginRoot({ context }: Props) {
                 </TableRow>
               )}
               {ramRegs.map((reg) => (
+                <RegisterTableRow
+                  key={reg.addr}
+                  reg={reg}
+                  value={readValues?.[reg.addr]}
+                  editing={editAddr === reg.addr}
+                  editValue={editValue}
+                  writing={writing}
+                  copies={copies}
+                  ui={context.ui}
+                  onStartEdit={() => startEdit(reg)}
+                  onEditChange={setEditValue}
+                  onCommit={() => commitWrite(reg)}
+                  onCancel={() => setEditAddr(null)}
+                />
+              ))}
+              {/* Factory section */}
+              {factoryRegs.length > 0 && (
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableCell colSpan={8} className="py-1.5 px-4 text-xs font-semibold text-muted-foreground tracking-wide uppercase">
+                    {copies.sectionFactory}
+                  </TableCell>
+                </TableRow>
+              )}
+              {factoryRegs.map((reg) => (
                 <RegisterTableRow
                   key={reg.addr}
                   reg={reg}

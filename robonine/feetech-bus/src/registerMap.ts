@@ -1,14 +1,16 @@
 // Sources used to verify this register map:
 // - Official Feetech Arduino SDK (SMS_STS.h / SMS_STS.cpp): https://github.com/ftservo/FTServo_Arduino
 // - matthieuvigne/STS_servos (most complete named register set): https://github.com/matthieuvigne/STS_servos/blob/master/src/STSServoDriver.h
-// - huggingface/lerobot feetech tables (sign-magnitude encodings): https://github.com/huggingface/lerobot/blob/main/src/lerobot/motors/feetech/tables.py
+// - huggingface/lerobot feetech tables (sign-magnitude encodings, addr 80–86 names): https://github.com/huggingface/lerobot/blob/v0.6.1/src/lerobot/motors/feetech/tables.py
+// - AIFITLAB STS memory table analysis (addr 24/25 split, factory params 80–86): https://wiki.aifitlab.com/feetech-servo-motor-docs/feetech-sts-servo-memory-table-analysis
+// - ABEJA SO-101 motor control post (lerobot ↔ Feetech FD tool name mapping): https://tech-blog.abeja.asia/entry/so101-motor-control-202508
 // - commanderfun/STS3215 register reference (defaults, units): https://github.com/commanderfun/STS3215/blob/main/REGISTER_REFERENCE.md
 // - iotdesignshop/Feetech-tuna (real-world Phase register values): https://github.com/iotdesignshop/Feetech-tuna/blob/main/servotemplates.py
 // - dgmz/feetech-servo-tool (cross-model ranges): https://github.com/dgmz/feetech-servo-tool/blob/main/servo.py
 // - Waveshare ST3215 user manual: https://files.waveshare.com/upload/f/f4/ST3215_Servo_User_Manual.pdf
 
 export type RegisterAccess = 'R' | 'RW'
-export type RegisterArea = 'EEPROM' | 'RAM'
+export type RegisterArea = 'EEPROM' | 'RAM' | 'FACTORY'
 
 export interface StsRegister {
   addr: number
@@ -25,10 +27,14 @@ export interface StsRegister {
 export const ADDR_LOCK = 55
 /** Total EEPROM block size to read in one shot (addr 0–39). */
 export const EEPROM_BLOCK_LEN = 40
-/** Total RAM block size to read in one shot (addr 40–69). */
-export const RAM_BLOCK_LEN = 30
+/** Total RAM block size to read in one shot (addr 40–70, Present Current is 2 bytes at 69). */
+export const RAM_BLOCK_LEN = 31
 /** RAM start address. */
 export const RAM_START = 40
+/** Factory parameter block start address (shown as the DEFAULT area in Feetech FD). */
+export const FACTORY_START = 80
+/** Factory parameter block size (addr 80–86). */
+export const FACTORY_BLOCK_LEN = 7
 
 export const REGISTER_MAP: StsRegister[] = [
   // ── EEPROM ──────────────────────────────────────────────────────────────
@@ -100,16 +106,26 @@ export const REGISTER_MAP: StsRegister[] = [
   {
     addr: 24,
     name: 'Min Startup Force',
-    bytes: 2,
+    bytes: 1,
     access: 'RW',
     area: 'EEPROM',
     defaultVal: '0',
-    range: '0–1000',
-    description: 'Minimum motor output to overcome static friction before PID takes over',
+    range: '0–254 (×0.1 %)',
+    description: 'Minimum motor output to overcome static friction before PID takes over ("Punch" in Feetech FD). Shared by both directions.',
+  },
+  {
+    addr: 25,
+    name: 'Integral Limit',
+    bytes: 1,
+    access: 'RW',
+    area: 'EEPROM',
+    defaultVal: '0',
+    range: '0–254',
+    description: 'Caps the position-loop integral term at value × 4 ("MAX I" in Feetech FD). 0 = no cap. Applies in modes 0 and 4.',
   },
   { addr: 26, name: 'CW Dead Zone', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '1', range: '0–255', description: 'Clockwise position insensitive dead zone in encoder counts' },
   { addr: 27, name: 'CCW Dead Zone', bytes: 1, access: 'RW', area: 'EEPROM', defaultVal: '1', range: '0–255', description: 'Counter-clockwise position insensitive dead zone in encoder counts' },
-  { addr: 28, name: 'Protection Current', bytes: 2, access: 'RW', area: 'EEPROM', defaultVal: '0', range: '0–511 (×6.5 mA)', description: 'Overcurrent protection threshold. 0 = disabled.' },
+  { addr: 28, name: 'Protection Current', bytes: 2, access: 'RW', area: 'EEPROM', defaultVal: '0', range: '0–2047 (×6.5 mA)', description: 'Overcurrent protection threshold. Max effective value 500 (3250 mA).' },
   {
     addr: 30,
     name: 'Angular Resolution',
@@ -217,6 +233,50 @@ export const REGISTER_MAP: StsRegister[] = [
   },
   { addr: 66, name: 'Moving', bytes: 1, access: 'R', area: 'RAM', defaultVal: '0', range: '0–1', description: '1 = servo is actively moving toward the goal position' },
   { addr: 69, name: 'Present Current', bytes: 2, access: 'R', area: 'RAM', defaultVal: '—', range: '0–511 (×6.5 mA)', description: 'Current draw in 6.5 mA units' },
+  // ── Factory parameters (read-only, set at the factory) ─────────────────
+  {
+    addr: 80,
+    name: 'Moving Threshold',
+    bytes: 1,
+    access: 'R',
+    area: 'FACTORY',
+    defaultVal: '—',
+    range: '0–255',
+    description: 'Speed threshold above which the servo reports itself as moving (drives the Moving flag at 66).',
+  },
+  { addr: 81, name: 'DTs', bytes: 1, access: 'R', area: 'FACTORY', defaultVal: '—', range: '0–255 ms', description: 'Internal control-loop timing period in ms.' },
+  {
+    addr: 82,
+    name: 'Velocity Unit Factor',
+    bytes: 1,
+    access: 'R',
+    area: 'FACTORY',
+    defaultVal: '—',
+    range: '0–255',
+    description: 'Scale for velocity unit conversion ("Vk" in Feetech FD). On STS3215 it is 50, so one Vmin/Vmax unit is 50 steps/s ≈ 0.732 rpm.',
+  },
+  {
+    addr: 83,
+    name: 'Min Velocity Limit',
+    bytes: 1,
+    access: 'R',
+    area: 'FACTORY',
+    defaultVal: '—',
+    range: '0–255 (×0.732 rpm)',
+    description: 'Minimum allowed speed ("Vmin" in Feetech FD). LeRobot calls this register Hts (ns), valid from firmware 2.54.',
+  },
+  { addr: 84, name: 'Max Velocity Limit', bytes: 1, access: 'R', area: 'FACTORY', defaultVal: '—', range: '0–255 (×0.732 rpm)', description: 'Maximum allowed speed ("Vmax" in Feetech FD).' },
+  { addr: 85, name: 'Max Acceleration', bytes: 1, access: 'R', area: 'FACTORY', defaultVal: '—', range: '0–255', description: 'Factory-set maximum acceleration ("Amax" in Feetech FD).' },
+  {
+    addr: 86,
+    name: 'Acceleration Multiplier',
+    bytes: 1,
+    access: 'R',
+    area: 'FACTORY',
+    defaultVal: '—',
+    range: '0–255',
+    description: 'Acceleration used when Acceleration (41) is 0 ("KAcc" in Feetech FD). If both are 0 the servo responds at full speed.',
+  },
 ]
 
 /** Decode a raw byte array (starting at addr 0) into a map of addr → numeric value. */
