@@ -1,0 +1,43 @@
+import type { PluginContext } from '@robonine/plugin-sdk'
+import { usd, withExtras } from './sdkExtras'
+import { useEffect, useMemo, useState } from 'react'
+import { LibraryPanel } from './libraryPanel'
+import { translations } from './translations'
+import { useRobotLink } from './robotLink'
+import { useSession } from './sessionLog'
+import { TaskPanel } from './taskPanel'
+
+/**
+ * Task agent tool: describe a job, let the AI do it with the arm and cameras, keep the program.
+ *
+ * @param props - The host's plugin context.
+ * @returns The tool.
+ */
+export function PluginRoot({ context }: { context: PluginContext }) {
+  const ctx = withExtras(context)
+  const t = useMemo(() => translations[ctx.locale as keyof typeof translations] ?? translations.en, [ctx.locale])
+  const link = useRobotLink(ctx)
+  const session = useSession(ctx)
+  const [balance, setBalance] = useState<number | null>(null)
+  const [tab, setTab] = useState<'task' | 'library'>('task')
+  const { Button } = ctx.ui
+
+  useEffect(() => {
+    void ctx.taskAgent.credits().then((c) => setBalance(c.balanceMicroUsd)).catch(() => setBalance(null))
+  }, [ctx.taskAgent, session.outcome])
+
+  return (
+    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">{ctx.locale === 'ru' ? 'Агент задач' : 'Task agent'}</h1>
+        {balance !== null && <span className={`text-sm tabular-nums ${balance > 0 ? 'text-muted-foreground' : 'text-destructive'}`}>{t.credits}: {usd(balance)}</span>}
+      </div>
+      {balance !== null && balance <= 0 && <p className="text-sm text-destructive">{t.noCredits}</p>}
+      <div className="flex gap-2">
+        <Button size="sm" variant={tab === 'task' ? 'default' : 'outline'} onClick={() => setTab('task')}>{t.tabTask}</Button>
+        <Button size="sm" variant={tab === 'library' ? 'default' : 'outline'} onClick={() => setTab('library')}>{t.tabLibrary}</Button>
+      </div>
+      {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} />}
+    </div>
+  )
+}
