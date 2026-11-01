@@ -46,7 +46,7 @@ export interface TaskProgramSummary {
 
 export interface TaskAgentApi {
   credits: () => Promise<{ balanceMicroUsd: number; spentMicroUsd: number; addedMicroUsd: number }>
-  start: (task: string, options?: { capUsd?: number; model?: 'agent' | 'light' }) => Promise<{ id: string; model: string }>
+  start: (task: string, options?: { model?: 'agent' | 'light' }) => Promise<{ id: string; model: string }>
   runProgram: (programId: string, version?: number) => Promise<{ id: string }>
   current: () => Promise<{ id: string; task: string; startedAt: number } | null>
   stop: (id: string) => Promise<void>

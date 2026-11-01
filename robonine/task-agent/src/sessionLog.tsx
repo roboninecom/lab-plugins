@@ -86,7 +86,10 @@ export function SessionLog({ t, session }: { t: Texts; session: ReturnType<typeo
         <div ref={end} />
       </div>
       {
-        session.outcome && (
+        session.outcome?.status === 'no_credits' && <p className="text-sm font-medium text-destructive">{t.outOfCredits}</p>
+      }
+      {
+        session.outcome && session.outcome.status !== 'no_credits' && (
           <p className={`text-sm font-medium ${session.outcome.success ? 'text-green-600' : 'text-amber-600'}`}>
             {session.outcome.success ? t.success : t.failure}: {session.outcome.summary}
             {session.outcome.saved ? ` — ${t.saved}` : ''}

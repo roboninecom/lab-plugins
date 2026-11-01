@@ -5,22 +5,22 @@ import type { Texts } from './translations'
 import { useState } from 'react'
 
 /**
- * The Task tab: cameras, the job in plain words, spending limit, model, start/stop, live log.
+ * The Task tab: cameras, the job in plain words, model, start/stop, live log. The user's credit
+ * balance is the only spending limit: Start is off without credits.
  *
- * @param props - Context, texts, robot link and session.
+ * @param props - Context, texts, robot link, session, and whether the user has no credits left.
  * @returns The tab.
  */
-export function TaskPanel({ ctx, t, link, session }: { ctx: TaskAgentContext; t: Texts; link: ReturnType<typeof useRobotLink>; session: ReturnType<typeof useSession> }) {
-  const { Button, Card, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } = ctx.ui
+export function TaskPanel({ ctx, t, link, session, outOfCredits }: { ctx: TaskAgentContext; t: Texts; link: ReturnType<typeof useRobotLink>; session: ReturnType<typeof useSession>; outOfCredits: boolean }) {
+  const { Button, Card, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } = ctx.ui
   const [task, setTask] = useState('')
-  const [cap, setCap] = useState('2')
   const [model, setModel] = useState<'agent' | 'light'>('agent')
   const [error, setError] = useState<string | null>(null)
 
   const start = async () => {
     setError(null)
     try {
-      session.follow((await ctx.taskAgent.start(task.trim(), { capUsd: Number(cap), model })).id)
+      session.follow((await ctx.taskAgent.start(task.trim(), { model })).id)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -36,10 +36,6 @@ export function TaskPanel({ ctx, t, link, session }: { ctx: TaskAgentContext; t:
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="task-agent-cap">{t.cap}</Label>
-            <Input id="task-agent-cap" className="w-28" type="number" min="0.1" max="50" step="0.5" value={cap} onChange={(e) => setCap(e.target.value)} />
-          </div>
-          <div className="flex flex-col gap-1.5">
             <Label>{t.model}</Label>
             <Select value={model} onValueChange={(v: string) => setModel(v as 'agent' | 'light')}>
               <SelectTrigger className="w-48">
@@ -54,7 +50,7 @@ export function TaskPanel({ ctx, t, link, session }: { ctx: TaskAgentContext; t:
           {
             session.running ?
               <Button variant="outline" onClick={() => session.id && void ctx.taskAgent.stop(session.id)}>{t.stop}</Button>
-              : <Button disabled={!link.linked || task.trim().length < 3} onClick={() => void start()}>{t.start}</Button>
+              : <Button disabled={outOfCredits || !link.linked || task.trim().length < 3} onClick={() => void start()}>{t.start}</Button>
           }
         </div>
         <p className="text-xs text-muted-foreground">{link.connected && !link.linked && !link.error ? t.linking : t.armHint}</p>

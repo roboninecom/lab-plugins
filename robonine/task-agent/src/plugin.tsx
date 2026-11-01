@@ -39,7 +39,7 @@ export function PluginRoot({ context }: { context: PluginContext }) {
           <TabsTrigger value="library">{t.tabLibrary}</TabsTrigger>
         </TabsList>
       </Tabs>
-      {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} />}
+      {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} outOfCredits={balance !== null && balance <= 0} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} />}
     </div>
   )
 }
