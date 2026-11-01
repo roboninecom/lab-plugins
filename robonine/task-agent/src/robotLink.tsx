@@ -28,7 +28,15 @@ export function useRobotLink(ctx: TaskAgentContext) {
   camerasRef.current = ctx.cameras
   flipRef.current = ctx.cameraOrientation
 
-  const refreshRig = useCallback(async () => setRig(await ctx.taskAgent.rig().catch(() => null)), [ctx.taskAgent])
+  const refreshRig = useCallback(async () => {
+    const next = await ctx.taskAgent.rig().catch(() => null)
+
+    setRig(next)
+    // the rig names its devices: open them at the right size without asking
+    if (next?.cameras.some((c) => c.deviceLabel)) {
+      await ctx.taskAgent.openRigCameras().catch(() => undefined)
+    }
+  }, [ctx.taskAgent])
   const setupRig = useCallback(async () => {
     await ctx.taskAgent.openRigSetup()
     await refreshRig()

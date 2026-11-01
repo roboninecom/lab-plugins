@@ -57,6 +57,8 @@ export interface TaskAgentApi {
   fork: (id: string) => Promise<{ id: string }>
   /** The connected robot's camera rig: which camera device plays which part, and whether it is calibrated (null: no rig yet). */
   rig: () => Promise<RigSummary | null>
+  /** Opens the rig's cameras at their models' sizes and settings (again when one comes back after dropping off USB). */
+  openRigCameras: () => Promise<Array<{ id: 'stereo' | 'wrist'; state: string }>>
   /** Opens the host's camera rig setup and calibration; resolves when the user closes it. */
   openRigSetup: () => Promise<void>
 }
