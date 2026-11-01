@@ -55,6 +55,16 @@ export interface TaskAgentApi {
   getProgram: (id: string, version?: number) => Promise<{ program: TaskProgramSummary; version: { version: number; code: string; meta: Record<string, unknown>; notes: string | null; createdAt: number } }>
   setVisibility: (id: string, visibility: 'private' | 'public') => Promise<void>
   fork: (id: string) => Promise<{ id: string }>
+  /** The connected robot's camera rig: which camera device plays which part, and whether it is calibrated (null: no rig yet). */
+  rig: () => Promise<RigSummary | null>
+  /** Opens the host's camera rig setup and calibration; resolves when the user closes it. */
+  openRigSetup: () => Promise<void>
+}
+
+export interface RigSummary {
+  cameras: Array<{ id: 'stereo' | 'wrist'; layout: 'mono' | 'stereo-sbs'; deviceLabel: string | null }>
+  calibrated: boolean
+  calibrationDate: string | null
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
