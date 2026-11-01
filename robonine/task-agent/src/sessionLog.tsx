@@ -71,7 +71,9 @@ function describe(e: Exclude<TaskAgentEvent, { type: 'cost' | 'outcome' }>): str
 export function SessionLog({ t, session }: { t: Texts; session: ReturnType<typeof useSession> }) {
   const end = useRef<HTMLDivElement>(null)
 
-  useEffect(() => end.current?.scrollIntoView({ block: 'nearest' }), [session.lines.length])
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'nearest' })
+  }, [session.lines.length])
 
   return (
     <div className="flex flex-col gap-2">

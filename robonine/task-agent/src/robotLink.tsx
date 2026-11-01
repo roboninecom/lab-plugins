@@ -41,7 +41,9 @@ export function useRobotLink(ctx: TaskAgentContext) {
     setLinked(false)
   }, [])
 
-  useEffect(() => () => void handle.current?.close(), [])
+  useEffect(() => () => {
+    void handle.current?.close()
+  }, [])
 
   return { roles, setRoles, linked, error, connect, disconnect }
 }
