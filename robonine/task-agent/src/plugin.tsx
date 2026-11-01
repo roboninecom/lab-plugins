@@ -1,6 +1,6 @@
 import type { PluginContext } from '@robonine/plugin-sdk'
-import { usd, withExtras } from './sdkExtras'
 import { useEffect, useMemo, useState } from 'react'
+import { usd, withExtras } from './sdkExtras'
 import { LibraryPanel } from './libraryPanel'
 import { translations } from './translations'
 import { useRobotLink } from './robotLink'
@@ -20,7 +20,7 @@ export function PluginRoot({ context }: { context: PluginContext }) {
   const session = useSession(ctx)
   const [balance, setBalance] = useState<number | null>(null)
   const [tab, setTab] = useState<'task' | 'library'>('task')
-  const { Button } = ctx.ui
+  const { Tabs, TabsList, TabsTrigger } = ctx.ui
 
   useEffect(() => {
     void ctx.taskAgent.credits().then((c) => setBalance(c.balanceMicroUsd)).catch(() => setBalance(null))
@@ -33,10 +33,12 @@ export function PluginRoot({ context }: { context: PluginContext }) {
         {balance !== null && <span className={`text-sm tabular-nums ${balance > 0 ? 'text-muted-foreground' : 'text-destructive'}`}>{t.credits}: {usd(balance)}</span>}
       </div>
       {balance !== null && balance <= 0 && <p className="text-sm text-destructive">{t.noCredits}</p>}
-      <div className="flex gap-2">
-        <Button size="sm" variant={tab === 'task' ? 'default' : 'outline'} onClick={() => setTab('task')}>{t.tabTask}</Button>
-        <Button size="sm" variant={tab === 'library' ? 'default' : 'outline'} onClick={() => setTab('library')}>{t.tabLibrary}</Button>
-      </div>
+      <Tabs value={tab} onValueChange={(v: string) => setTab(v as 'task' | 'library')}>
+        <TabsList>
+          <TabsTrigger value="task">{t.tabTask}</TabsTrigger>
+          <TabsTrigger value="library">{t.tabLibrary}</TabsTrigger>
+        </TabsList>
+      </Tabs>
       {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} />}
     </div>
   )

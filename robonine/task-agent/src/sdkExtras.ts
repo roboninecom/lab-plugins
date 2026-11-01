@@ -1,4 +1,5 @@
 import type { PluginContext } from '@robonine/plugin-sdk'
+import type React from 'react'
 
 /*
  * Host APIs this plugin uses that the published @robonine/plugin-sdk does not declare yet
@@ -56,8 +57,27 @@ export interface TaskAgentApi {
   fork: (id: string) => Promise<{ id: string }>
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyComponent = React.ComponentType<any>
+
+/** Host UI components newer than the published SDK. */
+export interface UiExtras {
+  Textarea: React.ComponentType<React.TextareaHTMLAttributes<HTMLTextAreaElement>>
+  Label: React.ComponentType<React.LabelHTMLAttributes<HTMLLabelElement>>
+  Select: AnyComponent
+  SelectTrigger: AnyComponent
+  SelectValue: AnyComponent
+  SelectContent: AnyComponent
+  SelectItem: AnyComponent
+  CameraView: React.ComponentType<{ stream?: MediaStream | null; className?: string }>
+  Checkbox: React.ComponentType<{ id?: string; checked?: boolean; onCheckedChange?: (checked: boolean) => void; disabled?: boolean; className?: string }>
+  Tabs: AnyComponent
+  TabsList: AnyComponent
+  TabsTrigger: AnyComponent
+}
+
 /** The plugin context with the task agent extras. */
-export type TaskAgentContext = PluginContext & { taskAgent: TaskAgentApi; motion: MotionApi }
+export type TaskAgentContext = Omit<PluginContext, 'ui'> & { ui: PluginContext['ui'] & UiExtras; taskAgent: TaskAgentApi; motion: MotionApi }
 
 /**
  * Views the plugin context with the APIs above.
@@ -66,7 +86,7 @@ export type TaskAgentContext = PluginContext & { taskAgent: TaskAgentApi; motion
  * @returns The same object, typed.
  */
 export function withExtras(context: PluginContext): TaskAgentContext {
-  return context as TaskAgentContext
+  return context as unknown as TaskAgentContext
 }
 
 /**

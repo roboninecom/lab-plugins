@@ -13,7 +13,7 @@ export const manifest = {
     en: 'Describe a job in plain words; the AI looks with the cameras, writes a program for the arm, runs it until the job is verifiably done, and keeps it in your library.',
     ru: 'Опишите задачу словами: ИИ осмотрится камерами, напишет программу для руки, выполнит её до проверенного результата и сохранит в вашей библиотеке.',
   },
-  icon: 'Sparkles',
+  icon: 'brain-circuit',
   scopes: ['robot.read', 'robot.motion', 'robot.saved', 'camera.read', 'task.agent', 'user.auth'],
   collapseMenu: true,
 } as unknown as PluginManifest

@@ -3,19 +3,23 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { TaskAgentContext } from './sdkExtras'
 import type { Texts } from './translations'
 
+const NONE = '__none__'
+
 /**
- * Camera roles and the robot's link to the server, kept for the lifetime of the tool.
+ * Camera roles and the robot's link to the server. The link follows the robot connection:
+ * it opens as soon as a robot is connected and closes when it goes away or the tool closes.
  *
  * @param ctx - Plugin context.
- * @returns Roles, setter, link state and connect/disconnect.
+ * @returns Roles, setter and link state.
  */
 export function useRobotLink(ctx: TaskAgentContext) {
   const [roles, setRolesState] = useState<CameraRoles>(loadRoles)
   const [linked, setLinked] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const handle = useRef<{ close: () => Promise<void> } | null>(null)
   const rolesRef = useRef(roles)
   const camerasRef = useRef(ctx.cameras)
+  const connected = ctx.connection.connected
+  const motion = ctx.motion
 
   rolesRef.current = roles
   camerasRef.current = ctx.cameras
@@ -25,63 +29,84 @@ export function useRobotLink(ctx: TaskAgentContext) {
     setRolesState(next)
   }, [])
 
-  const connect = useCallback(async () => {
-    setError(null)
-    try {
-      handle.current = await ctx.motion.openSession({ snapshot: snapshotProvider(() => camerasRef.current, () => rolesRef.current, ctx.motion) })
-      setLinked(true)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+  useEffect(() => {
+    let cancelled = false
+    let handle: { close: () => Promise<void> } | null = null
+
+    if (!connected) {
+      return undefined
     }
-  }, [ctx.motion])
 
-  const disconnect = useCallback(async () => {
-    await handle.current?.close()
-    handle.current = null
-    setLinked(false)
-  }, [])
+    setError(null)
+    motion.openSession({ snapshot: snapshotProvider(() => camerasRef.current, () => rolesRef.current, motion) }).then(
+      (h) => {
+        if (cancelled) {
+          void h.close()
+        } else {
+          handle = h
+          setLinked(true)
+        }
+      },
+      (e: unknown) => !cancelled && setError(e instanceof Error ? e.message : String(e)),
+    )
 
-  useEffect(() => () => {
-    void handle.current?.close()
-  }, [])
+    return () => {
+      cancelled = true
+      setLinked(false)
+      void handle?.close()
+    }
+  }, [connected, motion])
 
-  return { roles, setRoles, linked, error, connect, disconnect }
+  return { roles, setRoles, linked, connected, error }
 }
 
 /**
- * Camera role selectors and the connect button.
+ * One camera role: a selector and, once chosen, a small live preview.
+ *
+ * @param props - Context, label, chosen camera id and setter.
+ * @returns The selector with its preview.
+ */
+function CameraPick({ ctx, t, label, value, onChange }: { ctx: TaskAgentContext; t: Texts; label: string; value: string | null; onChange: (v: string | null) => void }) {
+  const { CameraView, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } = ctx.ui
+  const camera = ctx.cameras.find((c) => c.id === value) ?? null
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <Label>{label}</Label>
+      <Select value={camera ? camera.id : NONE} onValueChange={(v: string) => onChange(v === NONE ? null : v)}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>{t.none}</SelectItem>
+          {ctx.cameras.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      {camera && <CameraView stream={camera.stream} className="h-32 w-full overflow-hidden rounded-md bg-muted" />}
+    </div>
+  )
+}
+
+/**
+ * Camera role selectors with live previews, and the wrist image orientation.
  *
  * @param props - Context, texts and the link state.
  * @returns The card.
  */
-export function RobotLinkCard({ ctx, t, link }: { ctx: TaskAgentContext; t: Texts; link: ReturnType<typeof useRobotLink> }) {
-  const { Button, Card } = ctx.ui
-  const select = (label: string, value: string | null, onChange: (v: string | null) => void) => (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="text-muted-foreground">{label}</span>
-      <select className="rounded-md border bg-background px-2 py-1" value={value ?? ''} onChange={(e) => onChange(e.target.value || null)}>
-        <option value="">{t.none}</option>
-        {ctx.cameras.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
-      </select>
-    </label>
-  )
+export function CamerasCard({ ctx, t, link }: { ctx: TaskAgentContext; t: Texts; link: ReturnType<typeof useRobotLink> }) {
+  const { Card, Checkbox, Label } = ctx.ui
 
   return (
     <Card className="flex flex-col gap-3 p-4">
       <p className="font-medium">{t.cameras}</p>
       <div className="grid gap-3 sm:grid-cols-2">
-        {select(t.stereoCamera, link.roles.stereo, (stereo) => link.setRoles({ ...link.roles, stereo }))}
-        {select(t.wristCamera, link.roles.wrist, (wrist) => link.setRoles({ ...link.roles, wrist }))}
+        <CameraPick ctx={ctx} t={t} label={t.stereoCamera} value={link.roles.stereo} onChange={(stereo) => link.setRoles({ ...link.roles, stereo })} />
+        <CameraPick ctx={ctx} t={t} label={t.wristCamera} value={link.roles.wrist} onChange={(wrist) => link.setRoles({ ...link.roles, wrist })} />
       </div>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={link.roles.wristRotate180} onChange={(e) => link.setRoles({ ...link.roles, wristRotate180: e.target.checked })} />
-        {t.wristRotate}
-      </label>
-      <div className="flex items-center gap-3">
-        <span className={`text-sm ${link.linked ? 'text-green-600' : 'text-muted-foreground'}`}>{t.link}: {link.linked ? t.linkOn : t.linkOff}</span>
-        <Button size="sm" variant={link.linked ? 'outline' : 'default'} onClick={() => void (link.linked ? link.disconnect() : link.connect())}>{link.linked ? t.disconnect : t.connect}</Button>
+      <div className="flex items-center gap-2">
+        <Checkbox id="task-agent-wrist-rotate" checked={link.roles.wristRotate180} onCheckedChange={(v: boolean) => link.setRoles({ ...link.roles, wristRotate180: v === true })} />
+        <Label htmlFor="task-agent-wrist-rotate">{t.wristRotate}</Label>
       </div>
-      {link.error && <p className="text-sm text-destructive">{link.error}</p>}
     </Card>
   )
 }

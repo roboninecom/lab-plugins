@@ -10,14 +10,13 @@ import type { Texts } from './translations'
  * @returns The tab.
  */
 export function LibraryPanel({ ctx, t, linked, session }: { ctx: TaskAgentContext; t: Texts; linked: boolean; session: ReturnType<typeof useSession> }) {
-  const { Button, Card } = ctx.ui
+  const { Button, Card, Input, Tabs, TabsList, TabsTrigger } = ctx.ui
   const [scope, setScope] = useState<'mine' | 'public'>('mine')
   const [q, setQ] = useState('')
   const [items, setItems] = useState<TaskProgramSummary[]>([])
   const [code, setCode] = useState<{ id: string; text: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const me = ctx.user?.id
-
   const load = useCallback(() => void ctx.taskAgent.listPrograms(scope, q).then(setItems).catch((e: Error) => setError(e.message)), [ctx.taskAgent, scope, q])
 
   useEffect(() => {
@@ -39,9 +38,13 @@ export function LibraryPanel({ ctx, t, linked, session }: { ctx: TaskAgentContex
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant={scope === 'mine' ? 'default' : 'outline'} onClick={() => setScope('mine')}>{t.mine}</Button>
-        <Button size="sm" variant={scope === 'public' ? 'default' : 'outline'} onClick={() => setScope('public')}>{t.public}</Button>
-        <input className="ml-auto w-56 rounded-md border bg-background px-2 py-1 text-sm" placeholder={t.search} value={q} onChange={(e) => setQ(e.target.value)} />
+        <Tabs value={scope} onValueChange={(v: string) => setScope(v as 'mine' | 'public')}>
+          <TabsList>
+            <TabsTrigger value="mine">{t.mine}</TabsTrigger>
+            <TabsTrigger value="public">{t.public}</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <Input className="ml-auto w-56" type="search" placeholder={t.search} value={q} onChange={(e) => setQ(e.target.value)} />
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {items.length === 0 && <p className="text-sm text-muted-foreground">{t.empty}</p>}
