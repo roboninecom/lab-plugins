@@ -16,4 +16,6 @@ export const manifest = {
   icon: 'brain-circuit',
   scopes: ['robot.read', 'robot.motion', 'robot.saved', 'camera.read', 'task.agent', 'user.auth'],
   collapseMenu: true,
+  // camera calibration runs in the browser on OpenCV.js (the rig dialog's solver)
+  dependencies: [{ vendor: 'robonine', slug: 'opencv' }],
 } as unknown as PluginManifest
