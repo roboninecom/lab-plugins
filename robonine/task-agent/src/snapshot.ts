@@ -1,24 +1,25 @@
-import type { MotionApi, RobotSnapshot } from './sdkExtras'
+import type { CameraOrientation, MotionApi, RobotSnapshot } from './sdkExtras'
 import type { CameraHandle } from '@robonine/plugin-sdk'
 
 /** How a connected camera is used (chosen by the operator; remembered in this browser). */
 export interface CameraRoles {
-  /** Side-by-side stereo camera: its frame is split into stereo_left and stereo_right. */
+  /** Side-by-side stereo camera: its frame is split into stereo_left and stereo_right, never flipped. */
   stereo: string | null
-  /** Wrist camera, mounted upside down: its frame is rotated 180°. */
+  /** Wrist camera: its frame gets the robot camera's flip (the camera views' flip buttons). */
   wrist: string | null
-  /** Whether the wrist image needs the 180° rotation (true for the lab cell). */
-  wristRotate180: boolean
 }
 
 const ROLES_KEY = 'robonine.task-agent.camera-roles'
+const NO_FLIP: CameraOrientation = { mirrorH: false, mirrorV: false }
 
 /** The remembered camera roles, or none. */
 export function loadRoles(): CameraRoles {
   try {
-    return { stereo: null, wrist: null, wristRotate180: true, ...(JSON.parse(localStorage.getItem(ROLES_KEY) ?? '{}') as Partial<CameraRoles>) }
+    const saved = JSON.parse(localStorage.getItem(ROLES_KEY) ?? '{}') as Partial<CameraRoles>
+
+    return { stereo: saved.stereo ?? null, wrist: saved.wrist ?? null }
   } catch {
-    return { stereo: null, wrist: null, wristRotate180: true }
+    return { stereo: null, wrist: null }
   }
 }
 
@@ -59,17 +60,21 @@ async function grab(stream: MediaStream): Promise<ImageBitmap> {
  * @param frame - The frame.
  * @param src - Source rectangle [x, y, w, h].
  * @param width - Output width.
- * @param rotate180 - Rotate the image half a turn.
+ * @param flip - Mirror horizontally and/or vertically (both = half a turn), as the camera views show it.
  * @returns JPEG base64 and the output size.
  */
-async function encode(frame: ImageBitmap, src: [number, number, number, number], width: number, rotate180: boolean): Promise<{ jpeg: string; width: number; height: number }> {
+async function encode(frame: ImageBitmap, src: [number, number, number, number], width: number, flip: CameraOrientation): Promise<{ jpeg: string; width: number; height: number }> {
   const height = Math.round((src[3] / src[2]) * width)
   const canvas = new OffscreenCanvas(width, height)
   const g = canvas.getContext('2d')!
 
-  if (rotate180) {
-    g.translate(width, height)
-    g.rotate(Math.PI)
+  if (flip.mirrorH) {
+    g.translate(width, 0)
+    g.scale(-1, 1)
+  }
+  if (flip.mirrorV) {
+    g.translate(0, height)
+    g.scale(1, -1)
   }
   g.drawImage(frame, src[0], src[1], src[2], src[3], 0, 0, width, height)
 
@@ -89,10 +94,11 @@ async function encode(frame: ImageBitmap, src: [number, number, number, number],
  *
  * @param cameras - Connected cameras.
  * @param roles - Which camera is which.
+ * @param wristFlip - The robot camera's flip from the camera views' flip buttons.
  * @param motion - For the joints at capture.
  * @returns The provider.
  */
-export function snapshotProvider(cameras: () => CameraHandle[], roles: () => CameraRoles, motion: MotionApi) {
+export function snapshotProvider(cameras: () => CameraHandle[], roles: () => CameraRoles, wristFlip: () => CameraOrientation, motion: MotionApi) {
   return async (wanted: string[] | undefined, width: number): Promise<RobotSnapshot[]> => {
     const r = roles()
     const byId = (id: string | null) => cameras().find((c) => c.id === id)
@@ -110,12 +116,12 @@ export function snapshotProvider(cameras: () => CameraHandle[], roles: () => Cam
 
       for (const [name, x] of [['stereo_left', 0], ['stereo_right', half]] as const) {
         if (want(name)) {
-          out.push({ camera: name, capturedAt, joints: q, ...(await encode(stereoFrame, [x, 0, half, stereoFrame.height], width, false)) })
+          out.push({ camera: name, capturedAt, joints: q, ...(await encode(stereoFrame, [x, 0, half, stereoFrame.height], width, NO_FLIP)) })
         }
       }
     }
     if (wristFrame) {
-      out.push({ camera: 'wrist', capturedAt, joints: q, ...(await encode(wristFrame, [0, 0, wristFrame.width, wristFrame.height], width, r.wristRotate180)) })
+      out.push({ camera: 'wrist', capturedAt, joints: q, ...(await encode(wristFrame, [0, 0, wristFrame.width, wristFrame.height], width, wristFlip())) })
     }
 
     return out

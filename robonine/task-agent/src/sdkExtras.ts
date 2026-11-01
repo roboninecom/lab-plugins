@@ -69,15 +69,21 @@ export interface UiExtras {
   SelectValue: AnyComponent
   SelectContent: AnyComponent
   SelectItem: AnyComponent
-  CameraView: React.ComponentType<{ stream?: MediaStream | null; className?: string }>
+  CameraView: React.ComponentType<{ stream?: MediaStream | null; className?: string; flip?: boolean }>
   Checkbox: React.ComponentType<{ id?: string; checked?: boolean; onCheckedChange?: (checked: boolean) => void; disabled?: boolean; className?: string }>
   Tabs: AnyComponent
   TabsList: AnyComponent
   TabsTrigger: AnyComponent
 }
 
+/** The robot camera's flip from the camera views' flip buttons. */
+export interface CameraOrientation {
+  mirrorH: boolean
+  mirrorV: boolean
+}
+
 /** The plugin context with the task agent extras. */
-export type TaskAgentContext = Omit<PluginContext, 'ui'> & { ui: PluginContext['ui'] & UiExtras; taskAgent: TaskAgentApi; motion: MotionApi }
+export type TaskAgentContext = Omit<PluginContext, 'ui'> & { ui: PluginContext['ui'] & UiExtras; taskAgent: TaskAgentApi; motion: MotionApi; cameraOrientation: CameraOrientation }
 
 /**
  * Views the plugin context with the APIs above.
