@@ -6,10 +6,10 @@ import type { Texts } from './translations'
 /**
  * The Library tab: my programs and shared programs; run without the model, share, copy, read code.
  *
- * @param props - Context, texts, whether the robot is linked, and the session.
+ * @param props - Context, texts, whether the robot is linked, the session, and which AI services are down (programs need both vision services).
  * @returns The tab.
  */
-export function LibraryPanel({ ctx, t, linked, session }: { ctx: TaskAgentContext; t: Texts; linked: boolean; session: ReturnType<typeof useSession> }) {
+export function LibraryPanel({ ctx, t, linked, session, aiDown }: { ctx: TaskAgentContext; t: Texts; linked: boolean; session: ReturnType<typeof useSession>; aiDown: string | null }) {
   const { Button, Card, Input, Tabs, TabsList, TabsTrigger } = ctx.ui
   const [scope, setScope] = useState<'mine' | 'public'>('mine')
   const [q, setQ] = useState('')
@@ -55,7 +55,7 @@ export function LibraryPanel({ ctx, t, linked, session }: { ctx: TaskAgentContex
               <span className="font-medium">{p.title}</span>
               <span className="text-xs text-muted-foreground">v{p.currentVersion} · {p.runs.ok}/{p.runs.total} {t.runs}</span>
               <div className="ml-auto flex gap-2">
-                <Button size="sm" disabled={!linked || session.running} onClick={() => void act(async () => session.follow((await ctx.taskAgent.runProgram(p.id)).id))}>{t.run}</Button>
+                <Button size="sm" disabled={!linked || session.running || aiDown !== null} title={aiDown ?? undefined} onClick={() => void act(async () => session.follow((await ctx.taskAgent.runProgram(p.id)).id))}>{t.run}</Button>
                 {p.authorId === me && <Button size="sm" variant="outline" onClick={() => void act(() => ctx.taskAgent.setVisibility(p.id, p.visibility === 'public' ? 'private' : 'public'))}>{p.visibility === 'public' ? t.unpublish : t.publish}</Button>}
                 {p.authorId !== me && <Button size="sm" variant="outline" onClick={() => void act(() => ctx.taskAgent.fork(p.id))}>{t.fork}</Button>}
                 <Button size="sm" variant="ghost" onClick={() => void act(async () => setCode(code?.id === p.id ? null : { id: p.id, text: (await ctx.taskAgent.getProgram(p.id)).version.code }))}>{t.code}</Button>

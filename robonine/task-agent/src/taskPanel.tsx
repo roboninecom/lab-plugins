@@ -6,12 +6,12 @@ import { useState } from 'react'
 
 /**
  * The Task tab: cameras, the job in plain words, model, start/stop, live log. The user's credit
- * balance is the only spending limit: Start is off without credits.
+ * balance is the only spending limit: Start is off without credits, and while an AI service is down.
  *
- * @param props - Context, texts, robot link, session, and whether the user has no credits left.
+ * @param props - Context, texts, robot link, session, whether the user has no credits left, and which AI services are down.
  * @returns The tab.
  */
-export function TaskPanel({ ctx, t, link, session, outOfCredits }: { ctx: TaskAgentContext; t: Texts; link: ReturnType<typeof useRobotLink>; session: ReturnType<typeof useSession>; outOfCredits: boolean }) {
+export function TaskPanel({ ctx, t, link, session, outOfCredits, aiDown }: { ctx: TaskAgentContext; t: Texts; link: ReturnType<typeof useRobotLink>; session: ReturnType<typeof useSession>; outOfCredits: boolean; aiDown: string | null }) {
   const { Button, Card, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea } = ctx.ui
   const [task, setTask] = useState('')
   const [model, setModel] = useState<'agent' | 'light'>('agent')
@@ -50,10 +50,11 @@ export function TaskPanel({ ctx, t, link, session, outOfCredits }: { ctx: TaskAg
           {
             session.running ?
               <Button variant="outline" onClick={() => session.id && void ctx.taskAgent.stop(session.id)}>{t.stop}</Button>
-              : <Button disabled={outOfCredits || !link.linked || task.trim().length < 3} onClick={() => void start()}>{t.start}</Button>
+              : <Button disabled={outOfCredits || aiDown !== null || !link.linked || task.trim().length < 3} onClick={() => void start()}>{t.start}</Button>
           }
         </div>
         <p className="text-xs text-muted-foreground">{link.connected && !link.linked && !link.error ? t.linking : t.armHint}</p>
+        {aiDown && <p className="text-sm text-destructive">{aiDown}</p>}
         {link.error && <p className="text-sm text-destructive">{link.error}</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </Card>

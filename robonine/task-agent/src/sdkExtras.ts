@@ -44,7 +44,14 @@ export interface TaskProgramSummary {
   updatedAt: number
 }
 
+/** The AI services under the names the user sees. */
+export type AiService = 'orchestrator' | 'fastVision' | 'slowVision'
+/** Their health, from the server. */
+export type AiHealth = Record<AiService, { state: 'up' | 'down' | 'unknown'; reason?: string; checkedAt: number }>
+
 export interface TaskAgentApi {
+  /** The AI services' health (checked by the server; `force` checks again now). */
+  health: (force?: boolean) => Promise<AiHealth>
   credits: () => Promise<{ balanceMicroUsd: number; spentMicroUsd: number; addedMicroUsd: number }>
   start: (task: string, options?: { model?: 'agent' | 'light' }) => Promise<{ id: string; model: string }>
   runProgram: (programId: string, version?: number) => Promise<{ id: string }>
