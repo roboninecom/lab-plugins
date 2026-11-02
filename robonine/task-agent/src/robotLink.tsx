@@ -20,13 +20,11 @@ export function useRobotLink(ctx: TaskAgentContext) {
   const effective = rolesFromRig(rig, ctx.cameras, roles)
   const rolesRef = useRef(roles)
   const camerasRef = useRef(ctx.cameras)
-  const flipRef = useRef(ctx.cameraOrientation)
   const connected = ctx.connection.connected
   const motion = ctx.motion
 
   rolesRef.current = effective
   camerasRef.current = ctx.cameras
-  flipRef.current = ctx.cameraOrientation
 
   const refreshRig = useCallback(async () => {
     const next = await ctx.taskAgent.rig().catch(() => null)
@@ -62,7 +60,7 @@ export function useRobotLink(ctx: TaskAgentContext) {
     }
 
     setError(null)
-    motion.openSession({ snapshot: snapshotProvider(() => camerasRef.current, () => rolesRef.current, () => flipRef.current, motion) }).then(
+    motion.openSession({ snapshot: snapshotProvider(() => camerasRef.current, () => rolesRef.current, motion) }).then(
       (h) => {
         if (cancelled) {
           void h.close()
