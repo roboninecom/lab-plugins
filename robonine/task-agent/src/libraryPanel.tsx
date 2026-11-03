@@ -1,5 +1,5 @@
 import type { TaskAgentContext, TaskProgramSummary } from './sdkExtras'
-import { SessionLog, type useSession } from './sessionLog'
+import type { useSession } from './sessionLog'
 import { useCallback, useEffect, useState } from 'react'
 import type { Texts } from './translations'
 
@@ -55,7 +55,7 @@ export function LibraryPanel({ ctx, t, linked, session, aiDown }: { ctx: TaskAge
               <span className="font-medium">{p.title}</span>
               <span className="text-xs text-muted-foreground">v{p.currentVersion} · {p.runs.ok}/{p.runs.total} {t.runs}</span>
               <div className="ml-auto flex gap-2">
-                <Button size="sm" disabled={!linked || session.running || aiDown !== null} title={aiDown ?? undefined} onClick={() => void act(async () => session.follow((await ctx.taskAgent.runProgram(p.id)).id))}>{t.run}</Button>
+                <Button size="sm" disabled={!linked || session.running || aiDown !== null} title={aiDown ?? undefined} onClick={() => void act(async () => session.follow((await ctx.taskAgent.runProgram(p.id)).id, p.title))}>{t.run}</Button>
                 {p.authorId === me && <Button size="sm" variant="outline" onClick={() => void act(() => ctx.taskAgent.setVisibility(p.id, p.visibility === 'public' ? 'private' : 'public'))}>{p.visibility === 'public' ? t.unpublish : t.publish}</Button>}
                 {p.authorId !== me && <Button size="sm" variant="outline" onClick={() => void act(() => ctx.taskAgent.fork(p.id))}>{t.fork}</Button>}
                 <Button size="sm" variant="ghost" onClick={() => void act(async () => setCode(code?.id === p.id ? null : { id: p.id, text: (await ctx.taskAgent.getProgram(p.id)).version.code }))}>{t.code}</Button>
@@ -66,7 +66,6 @@ export function LibraryPanel({ ctx, t, linked, session, aiDown }: { ctx: TaskAge
           </Card>
         ))
       }
-      {session.id && <SessionLog t={t} session={session} />}
     </div>
   )
 }

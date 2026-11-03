@@ -1,5 +1,5 @@
 import { CamerasCard, type useRobotLink } from './robotLink'
-import { SessionLog, type useSession } from './sessionLog'
+import type { useSession } from './sessionLog'
 import type { TaskAgentContext } from './sdkExtras'
 import type { Texts } from './translations'
 import { useState } from 'react'
@@ -20,7 +20,7 @@ export function TaskPanel({ ctx, t, link, session, outOfCredits, aiDown }: { ctx
   const start = async () => {
     setError(null)
     try {
-      session.follow((await ctx.taskAgent.start(task.trim(), { model })).id)
+      session.follow((await ctx.taskAgent.start(task.trim(), { model })).id, task.trim())
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     }
@@ -58,7 +58,6 @@ export function TaskPanel({ ctx, t, link, session, outOfCredits, aiDown }: { ctx
         {link.error && <p className="text-sm text-destructive">{link.error}</p>}
         {error && <p className="text-sm text-destructive">{error}</p>}
       </Card>
-      {session.id && <SessionLog t={t} session={session} />}
     </div>
   )
 }

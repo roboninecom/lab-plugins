@@ -7,6 +7,7 @@ import { useRobotLink } from './robotLink'
 import { useSession } from './sessionLog'
 import { TaskPanel } from './taskPanel'
 import { AiHealthDots, downText, useAiHealth } from './aiHealth'
+import { RunView } from './runView'
 
 /**
  * Task agent tool: describe a job, let the AI do it with the arm and cameras, keep the program.
@@ -21,6 +22,10 @@ export function PluginRoot({ context }: { context: PluginContext }) {
   const session = useSession(ctx)
   const [balance, setBalance] = useState<number | null>(null)
   const [tab, setTab] = useState<'task' | 'library'>('task')
+  // a run gets the whole tool until the user goes back (after it ends): the program list and the
+  // task form are no use while it moves the arm
+  const [dismissed, setDismissed] = useState<string | null>(null)
+  const inRun = session.id !== null && session.id !== dismissed
   const ai = useAiHealth(ctx, session.outcome)
   const { Tabs, TabsList, TabsTrigger } = ctx.ui
 
@@ -38,13 +43,20 @@ export function PluginRoot({ context }: { context: PluginContext }) {
         </div>
       </div>
       {balance !== null && balance <= 0 && <p className="text-sm text-destructive">{t.noCredits}</p>}
-      <Tabs value={tab} onValueChange={(v: string) => setTab(v as 'task' | 'library')}>
-        <TabsList>
-          <TabsTrigger value="task">{t.tabTask}</TabsTrigger>
-          <TabsTrigger value="library">{t.tabLibrary}</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} outOfCredits={balance !== null && balance <= 0} aiDown={downText(ai.health, t)} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} aiDown={downText(ai.health, t, ['fastVision', 'slowVision'])} />}
+      {inRun && <RunView ctx={ctx} t={t} link={link} session={session} onBack={() => setDismissed(session.id)} />}
+      {
+        !inRun && (
+          <>
+            <Tabs value={tab} onValueChange={(v: string) => setTab(v as 'task' | 'library')}>
+              <TabsList>
+                <TabsTrigger value="task">{t.tabTask}</TabsTrigger>
+                <TabsTrigger value="library">{t.tabLibrary}</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} outOfCredits={balance !== null && balance <= 0} aiDown={downText(ai.health, t)} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} aiDown={downText(ai.health, t, ['fastVision', 'slowVision'])} />}
+          </>
+        )
+      }
     </div>
   )
 }

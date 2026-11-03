@@ -9,18 +9,20 @@ type Outcome = Extract<TaskAgentEvent, { type: 'outcome' }>['outcome']
  * Picks up a session that is already running when the tool opens.
  *
  * @param ctx - Plugin context.
- * @returns Session state and a way to follow a new session.
+ * @returns Session state (with what runs, for the run screen) and a way to follow a new session.
  */
 export function useSession(ctx: TaskAgentContext) {
   const [id, setId] = useState<string | null>(null)
+  const [title, setTitle] = useState<string | null>(null)
   const [lines, setLines] = useState<string[]>([])
   const [spent, setSpent] = useState(0)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
   const unsubscribe = useRef<(() => void) | null>(null)
 
-  const follow = useCallback((sessionId: string) => {
+  const follow = useCallback((sessionId: string, runTitle?: string) => {
     unsubscribe.current?.()
     setId(sessionId)
+    setTitle(runTitle ?? null)
     setLines([])
     setSpent(0)
     setOutcome(null)
@@ -37,12 +39,12 @@ export function useSession(ctx: TaskAgentContext) {
   }, [ctx.taskAgent])
 
   useEffect(() => {
-    void ctx.taskAgent.current().then((s) => s && follow(s.id)).catch(() => undefined)
+    void ctx.taskAgent.current().then((s) => s && follow(s.id, s.task)).catch(() => undefined)
 
     return () => unsubscribe.current?.()
   }, [ctx.taskAgent, follow])
 
-  return { id, lines, spent, outcome, running: id !== null && outcome === null, follow }
+  return { id, title, lines, spent, outcome, running: id !== null && outcome === null, follow }
 }
 
 /**
