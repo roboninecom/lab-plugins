@@ -8,6 +8,7 @@ import { useSession } from './sessionLog'
 import { TaskPanel } from './taskPanel'
 import { AiHealthDots, downText, useAiHealth } from './aiHealth'
 import { RunView } from './runView'
+import { useArmed } from './armed'
 
 /**
  * Task agent tool: describe a job, let the AI do it with the arm and cameras, keep the program.
@@ -27,6 +28,7 @@ export function PluginRoot({ context }: { context: PluginContext }) {
   const [dismissed, setDismissed] = useState<string | null>(null)
   const inRun = session.id !== null && session.id !== dismissed
   const ai = useAiHealth(ctx, session.outcome)
+  const armed = useArmed(ctx, session.running)
   const { Tabs, TabsList, TabsTrigger } = ctx.ui
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function PluginRoot({ context }: { context: PluginContext }) {
                 <TabsTrigger value="library">{t.tabLibrary}</TabsTrigger>
               </TabsList>
             </Tabs>
-            {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} outOfCredits={balance !== null && balance <= 0} aiDown={downText(ai.health, t)} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} session={session} aiDown={downText(ai.health, t, ['fastVision', 'slowVision'])} />}
+            {tab === 'task' ? <TaskPanel ctx={ctx} t={t} link={link} session={session} armed={armed} outOfCredits={balance !== null && balance <= 0} aiDown={downText(ai.health, t)} /> : <LibraryPanel ctx={ctx} t={t} linked={link.linked} armed={armed} session={session} aiDown={downText(ai.health, t, ['fastVision', 'slowVision'])} />}
           </>
         )
       }
