@@ -71,6 +71,8 @@ export interface Copies {
   gravityOff: string
   gravityDone: string
   gravityStopped: string
+  backupDiffers: string
+  recoverNoBackup: string
 }
 
 export const translations: Record<string, Copies> = {
@@ -98,7 +100,7 @@ export const translations: Record<string, Copies> = {
       'The old firmware cannot be read back from a servo. What makes each servo yours (ID, calibration, limits) is in this file. Keep it: rolling back needs it, and we do not store it.',
     downloadBackup: 'Download backup',
     step2: '2. Confirm you saved it',
-    step2Hint: 'Choose the file you just saved. Installing unlocks once it matches the servos.',
+    step2Hint: 'Choose the file you just saved. Installing unlocks once it matches the servos. Rolling back later? Choose the backup you saved before installing.',
     chooseBackup: 'Choose backup file…',
     backupConfirmed: 'Backup matches all servos.',
     backupMismatch: 'This file does not match the connected servos',
@@ -132,7 +134,7 @@ export const translations: Record<string, Copies> = {
     close: 'Close',
     baudSwitch: 'baud switch {ms} ms',
     releaseLabel: 'Firmware to install',
-    needBackupHint: 'Download the settings backup and confirm it first (steps 1 and 2).',
+    needBackupHint: 'This servo does not answer: choose its backup file in step 2.',
     busyHint: 'Wait for the current operation to finish.',
     modelUnsupported: 'Model {model} is not supported by this firmware: skipped.',
     motionTitle: '4. Motion protocol',
@@ -152,6 +154,8 @@ export const translations: Record<string, Copies> = {
     gravityOff: 'Off',
     gravityDone: 'Gravity compensation calibrated.',
     gravityStopped: 'Calibration stopped: {error}',
+    backupDiffers: 'This file differs from servos {ids} (their settings changed since it was saved). Rolling back restores the values in the file; to install, download a fresh backup.',
+    recoverNoBackup: 'No backup file chosen: with factory firmware this servo may come back as ID 1 with default calibration. Choose its backup file in step 2 to restore its settings.',
   },
   ru: {
     title: 'Прошивка сервоприводов',
@@ -177,7 +181,7 @@ export const translations: Record<string, Copies> = {
       'Старую прошивку нельзя прочитать из сервопривода. Всё, что делает каждый сервопривод вашим (ID, калибровка, пределы), — в этом файле. Сохраните его: он нужен для отката, мы его не храним.',
     downloadBackup: 'Скачать копию',
     step2: '2. Подтвердите, что сохранили её',
-    step2Hint: 'Выберите только что сохранённый файл. Установка станет доступна, когда он совпадёт с сервоприводами.',
+    step2Hint: 'Выберите только что сохранённый файл. Установка станет доступна, когда он совпадёт с сервоприводами. Откатываетесь позже? Выберите копию, сохранённую перед установкой.',
     chooseBackup: 'Выбрать файл копии…',
     backupConfirmed: 'Копия совпадает со всеми сервоприводами.',
     backupMismatch: 'Этот файл не совпадает с подключёнными сервоприводами',
@@ -211,7 +215,7 @@ export const translations: Record<string, Copies> = {
     close: 'Закрыть',
     baudSwitch: 'переключение скорости {ms} мс',
     releaseLabel: 'Устанавливаемая прошивка',
-    needBackupHint: 'Сначала скачайте резервную копию настроек и подтвердите её (шаги 1 и 2).',
+    needBackupHint: 'Сервопривод не отвечает: выберите его резервную копию в шаге 2.',
     busyHint: 'Дождитесь окончания текущей операции.',
     modelUnsupported: 'Модель {model} не поддерживается этой прошивкой: пропущен.',
     motionTitle: '4. Протокол движения',
@@ -231,5 +235,7 @@ export const translations: Record<string, Copies> = {
     gravityOff: 'Выкл',
     gravityDone: 'Компенсация гравитации откалибрована.',
     gravityStopped: 'Калибровка остановлена: {error}',
+    backupDiffers: 'Этот файл отличается от сервоприводов {ids} (их настройки изменились после сохранения). Откат восстановит значения из файла; для установки скачайте свежую копию.',
+    recoverNoBackup: 'Файл копии не выбран: с заводской прошивкой сервопривод может вернуться с ID 1 и заводской калибровкой. Выберите его копию в шаге 2, чтобы восстановить настройки.',
   },
 }

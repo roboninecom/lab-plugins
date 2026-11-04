@@ -48,7 +48,8 @@ export function PluginRoot({ context }: Props) {
   const [rows, setRows] = useState<Row[]>([])
   const [scanning, setScanning] = useState(false)
   const [adapter, setAdapter] = useState<{ echo: boolean; canChangeBaud: boolean } | null>(null)
-  const [backupDownloaded, setBackupDownloaded] = useState(false)
+  const [backupMatches, setBackupMatches] = useState(false)
+  const [backupNote, setBackupNote] = useState<string | null>(null)
   const [backup, setBackup] = useState<Map<number, Uint8Array> | null>(null)
   const [backupError, setBackupError] = useState<string | null>(null)
   const [confirmText, setConfirmText] = useState('')
@@ -123,8 +124,9 @@ export function PluginRoot({ context }: Props) {
         { model: context.connection.robotModel, robotId: context.connection.robotId },
       ),
     )
-    setBackupDownloaded(true)
     setBackup(null)
+    setBackupMatches(false)
+    setBackupNote(null)
   }, [context.connection.robotId, context.connection.robotModel, readRow, servoIds])
 
   const confirmBackup = useCallback(
@@ -137,17 +139,19 @@ export function PluginRoot({ context }: Props) {
           return !saved || settingsDifferences(t, saved).length > 0
         })
 
-        if (mismatched.length) {
-          throw new Error(`${copies.backupMismatch}: ${mismatched.map((t) => t[5]).join(', ')}`)
-        }
+        // Any valid backup can be used to roll back; installing needs one that matches the servos.
         setBackup(parsed)
+        setBackupMatches(mismatched.length === 0)
+        setBackupNote(mismatched.length ? fill(copies.backupDiffers, { ids: mismatched.map((t) => t[5]).join(', ') }) : null)
         setBackupError(null)
       } catch (e) {
         setBackup(null)
+        setBackupMatches(false)
+        setBackupNote(null)
         setBackupError((e as Error).message)
       }
     },
-    [copies.backupMismatch, liveTables],
+    [copies.backupDiffers, liveTables],
   )
 
   const progressHandlers = (id: number) => ({
@@ -231,10 +235,21 @@ export function PluginRoot({ context }: Props) {
   const runIsolated = useCallback(async () => {
     const job = isolation
     const release = job && releases?.get(job.release)
-    const saved = job && backup?.get(job.servoId)
+    let saved: Uint8Array | null = (job && backup?.get(job.servoId)) ?? null
 
-    if (!job || !release || !adapter || !saved) {
+    if (!job || !release || !adapter) {
       return
+    }
+
+    // No backup file: v9 firmware kept this servo's settings, so take them from the servo itself.
+    if (!saved && job.kind === 'rollback') {
+      try {
+        saved = new Uint8Array(await context.servo.readRegisters(job.servoId, 0, 87))
+      } catch {
+        context.toast.error(copies.needBackupHint)
+
+        return
+      }
     }
     setIsolation({ ...job, running: true })
     patchRow(job.servoId, { state: 'preflight', done: 0, total: 0, message: '', report: null })
@@ -254,7 +269,7 @@ export function PluginRoot({ context }: Props) {
       const result = await context.bus.exclusive((bus) => {
         const link = new Link(bus, adapter.echo)
 
-        return job.kind === 'rollback' ? rollbackServo(link, release, saved, handlers, onRestore) : recoverServo(link, release, saved, handlers, onRestore)
+        return job.kind === 'rollback' ? rollbackServo(link, release, saved!, handlers, onRestore) : recoverServo(link, release, saved, handlers, onRestore)
       })
 
       report = result.report
@@ -316,7 +331,7 @@ export function PluginRoot({ context }: Props) {
   }
 
   /** Why a row's rollback/recover is unavailable, or '' when it can run. */
-  const rowActionBlocked = (id: number) => {
+  const rowActionBlocked = (id: number, kind: 'rollback' | 'recover') => {
     const table = rows.find((r) => r.id === id)?.table ?? null
 
     if (busy) {
@@ -332,7 +347,9 @@ export function PluginRoot({ context }: Props) {
       return copies.noBaudSwitch
     }
 
-    return backup?.get(id) ? '' : copies.needBackupHint
+    // Rollback restores settings from the backup file, or from the servo itself when it answers;
+    // recovery is for a servo that may not answer, and warns in its dialog when no file is chosen.
+    return kind === 'recover' || backup?.get(id) || table ? '' : copies.needBackupHint
   }
 
   const firmwareLabel = (r: Row) => (r.firmware ? `${r.firmware.flavour} ${r.firmware.version}${r.firmware.supported ? '' : ` (${copies.untested})`}` : r.table ? '—' : copies.noReply)
@@ -372,7 +389,7 @@ export function PluginRoot({ context }: Props) {
     }
   }
 
-  const canFlash = !!backup && !!adapter?.canChangeBaud && !busy && confirmText === 'FLASH' && !!releases
+  const canFlash = !!backup && backupMatches && !!adapter?.canChangeBaud && !busy && confirmText === 'FLASH' && !!releases
   const pending = rows.filter((r) => r.table && modelSupported(r.table, releases?.get('robonine-9.0')) && !(r.firmware?.flavour === 'robonine' && r.firmware.version === '9.0'))
 
   return (
@@ -424,22 +441,22 @@ export function PluginRoot({ context }: Props) {
                   )}
                   {r.firmware?.flavour === 'robonine' && (
                     // Disabled buttons ignore the pointer, so the reason sits on a wrapper.
-                    <span title={rowActionBlocked(r.id)}>
+                    <span title={rowActionBlocked(r.id, 'rollback')}>
                       <Button
                         size="sm"
                         variant="outline"
-                        disabled={!!rowActionBlocked(r.id)}
+                        disabled={!!rowActionBlocked(r.id, 'rollback')}
                         onClick={() => setIsolation({ servoId: r.id, kind: 'rollback', release: 'feetech-3.10', checked: 'no', running: false })}
                       >
                         {copies.rollback}
                       </Button>
                     </span>
                   )}
-                  <span title={rowActionBlocked(r.id)}>
+                  <span title={rowActionBlocked(r.id, 'recover')}>
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={!!rowActionBlocked(r.id)}
+                      disabled={!!rowActionBlocked(r.id, 'recover')}
                       onClick={() => setIsolation({ servoId: r.id, kind: 'recover', release: r.firmware?.flavour === 'robonine' ? 'robonine-9.0' : 'feetech-3.10', checked: 'no', running: false })}
                     >
                       {copies.recover}
@@ -481,10 +498,11 @@ export function PluginRoot({ context }: Props) {
                 e.target.value = ''
               }}
             />
-            <Button size="sm" variant="outline" disabled={!backupDownloaded || busy} onClick={() => fileInput.current?.click()}>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => fileInput.current?.click()}>
               {copies.chooseBackup}
             </Button>
-            {backup && <span className="text-xs text-green-600">{copies.backupConfirmed}</span>}
+            {backup && backupMatches && <span className="text-xs text-green-600">{copies.backupConfirmed}</span>}
+            {backup && backupNote && <span className="text-xs text-amber-600">{backupNote}</span>}
             {backupError && <span className="text-xs text-red-500">{backupError}</span>}
           </div>
         </div>
@@ -497,7 +515,7 @@ export function PluginRoot({ context }: Props) {
               className="h-8 w-64 font-mono"
               placeholder={copies.typeFlash}
               value={confirmText}
-              disabled={!backup || busy}
+              disabled={!backup || !backupMatches || busy}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmText(e.target.value.trim())}
             />
             <Button size="sm" disabled={!canFlash || pending.length === 0} onClick={installAll}>
@@ -591,6 +609,8 @@ export function PluginRoot({ context }: Props) {
               </select>
             </label>
           )}
+
+          {isolation?.kind === 'recover' && isolation.release === 'feetech-3.10' && !backup?.get(isolation.servoId) && <p className="text-sm text-amber-600">{copies.recoverNoBackup}</p>}
 
           {isolation && isolation.checked !== 'no' && (
             <p className={`text-sm ${isolation.checked === 'ok' ? 'text-green-600' : 'text-red-500'}`}>
