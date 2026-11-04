@@ -12,6 +12,7 @@ Official plugins for the [Robonine](https://robonine.com) educational robotics p
 | Control robot | `robonine/control-robot` | Manually move each joint using on-screen sliders |
 | Force sensor | `robonine/force-sensor` | Read and display force sensor measurements |
 | OpenCV | `robonine/opencv` | Loads OpenCV.js and exposes it as a background service |
+| Servo firmware | `robonine/servo-firmware` | Install the experimental Robonine v9 servo firmware or roll back to Feetech factory firmware (USB only) |
 | Set motor IDs | `robonine/set-motor-ids` | Sequentially assign IDs to servos |
 | Teleoperate | `robonine/teleoperate` | Mirror a leader arm to a follower arm with live camera feed |
 | WebMCP | `robonine/webmcp` | Exposes robot state and control to AI assistants via the Model Context Protocol |
