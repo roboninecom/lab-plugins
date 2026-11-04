@@ -55,6 +55,7 @@ export function PluginRoot({ context }: Props) {
   const [busy, setBusy] = useState(false)
   const [isolation, setIsolation] = useState<Isolation | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const gravityAbort = useRef<AbortController | null>(null)
 
   useEffect(() => {
     loadBundledReleases()
@@ -337,7 +338,6 @@ export function PluginRoot({ context }: Props) {
   const firmwareLabel = (r: Row) => (r.firmware ? `${r.firmware.flavour} ${r.firmware.version}${r.firmware.supported ? '' : ` (${copies.untested})`}` : r.table ? '—' : copies.noReply)
   const motion = context.connection.motion
   const gravity = motion?.gravity ?? null
-  const gravityAbort = useRef<AbortController | null>(null)
 
   const calibrateGravity = async () => {
     if (!(await context.showSafetyWarning())) {
