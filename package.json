@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "build": "node --import tsx/esm scripts/buildPlugins.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx/esm --test robonine/*/test/*.test.ts"
   },
   "devDependencies": {
     "@mcp-b/webmcp-polyfill": "^2.2.0",

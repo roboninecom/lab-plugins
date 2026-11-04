@@ -10,5 +10,6 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["robonine"]
+  "include": ["robonine"],
+  "exclude": ["robonine/*/test", "robonine/*/scripts", "**/node_modules"]
 }
