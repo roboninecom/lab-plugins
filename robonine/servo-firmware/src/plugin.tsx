@@ -335,6 +335,15 @@ export function PluginRoot({ context }: Props) {
   }
 
   const firmwareLabel = (r: Row) => (r.firmware ? `${r.firmware.flavour} ${r.firmware.version}${r.firmware.supported ? '' : ` (${copies.untested})`}` : r.table ? '—' : copies.noReply)
+  const motion = context.connection.motion
+  const switchMotion = async (protocol: 'sts' | 'sts-v9') => {
+    try {
+      await context.setMotionProtocol(protocol)
+    } catch (e) {
+      context.toast.error((e as Error).message)
+    }
+  }
+
   const canFlash = !!backup && !!adapter?.canChangeBaud && !busy && confirmText === 'FLASH' && !!releases
   const pending = rows.filter((r) => r.table && modelSupported(r.table, releases?.get('robonine-9.0')) && !(r.firmware?.flavour === 'robonine' && r.firmware.version === '9.0'))
 
@@ -470,6 +479,24 @@ export function PluginRoot({ context }: Props) {
           </div>
         </div>
       </Card>
+
+      {motion && typeof context.setMotionProtocol === 'function' && (
+        <Card className="p-4 flex flex-col gap-2">
+          <span className="text-sm font-medium">{copies.motionTitle}</span>
+          <span className="text-xs text-muted-foreground">{motion.available ? copies.motionHint : copies.motionUnavailable}</span>
+          {motion.available && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button size="sm" variant={motion.active ? 'outline' : 'default'} disabled={busy} onClick={() => switchMotion('sts')}>
+                {copies.motionStandard}
+              </Button>
+              <Button size="sm" variant={motion.active ? 'default' : 'outline'} disabled={busy} onClick={() => switchMotion('sts-v9')}>
+                {copies.motionV9}
+              </Button>
+            </div>
+          )}
+          {motion.fallback.length > 0 && <span className="text-xs text-amber-600">{fill(copies.motionFallback, { ids: motion.fallback.join(', ') })}</span>}
+        </Card>
+      )}
 
       <Dialog open={isolation !== null} onOpenChange={(open: boolean) => !open && !isolation?.running && setIsolation(null)}>
         <DialogContent>

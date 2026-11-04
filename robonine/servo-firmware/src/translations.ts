@@ -54,6 +54,12 @@ export interface Copies {
   needBackupHint: string
   busyHint: string
   modelUnsupported: string
+  motionTitle: string
+  motionHint: string
+  motionUnavailable: string
+  motionStandard: string
+  motionV9: string
+  motionFallback: string
 }
 
 export const translations: Record<string, Copies> = {
@@ -118,6 +124,12 @@ export const translations: Record<string, Copies> = {
     needBackupHint: 'Download the settings backup and confirm it first (steps 1 and 2).',
     busyHint: 'Wait for the current operation to finish.',
     modelUnsupported: 'Model {model} is not supported by this firmware: skipped.',
+    motionTitle: '4. Motion protocol',
+    motionHint: 'Robonine v9 lets each servo plan smooth movements itself. The gripper keeps the standard protocol. The choice is remembered for this robot.',
+    motionUnavailable: 'Robonine v9 motion becomes available once every arm servo runs Robonine v9.',
+    motionStandard: 'Standard',
+    motionV9: 'Robonine v9 (experimental)',
+    motionFallback: 'Servos {ids} could not start v9 and run on the standard protocol.',
   },
   ru: {
     title: 'Прошивка сервоприводов',
@@ -180,5 +192,11 @@ export const translations: Record<string, Copies> = {
     needBackupHint: 'Сначала скачайте резервную копию настроек и подтвердите её (шаги 1 и 2).',
     busyHint: 'Дождитесь окончания текущей операции.',
     modelUnsupported: 'Модель {model} не поддерживается этой прошивкой: пропущен.',
+    motionTitle: '4. Протокол движения',
+    motionHint: 'В Robonine v9 каждый сервопривод сам планирует плавное движение. Захват остаётся на стандартном протоколе. Выбор запоминается для этого робота.',
+    motionUnavailable: 'Движение Robonine v9 станет доступно, когда на всех сервоприводах руки будет Robonine v9.',
+    motionStandard: 'Стандартный',
+    motionV9: 'Robonine v9 (экспериментально)',
+    motionFallback: 'Сервоприводы {ids} не смогли запустить v9 и работают по стандартному протоколу.',
   },
 }
