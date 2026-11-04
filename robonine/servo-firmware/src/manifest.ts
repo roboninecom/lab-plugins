@@ -9,8 +9,9 @@ export const manifest: PluginManifest = {
     ru: 'Прошивка сервоприводов',
   },
   description: {
-    en: 'Install the experimental Robonine v9 firmware on STS3215 servos, or roll back to Feetech factory firmware. USB only.',
-    ru: 'Установка экспериментальной прошивки Robonine v9 на сервоприводы STS3215 или возврат к заводской прошивке Feetech. Только USB.',
+    // Kept to three lines on the narrowest /tools card (768 px viewport); measured in Chrome.
+    en: 'Install or roll back Robonine v9 firmware.',
+    ru: 'Установка и откат прошивки Robonine v9.',
   },
   icon: 'cpu',
   // robot.firmware: raw bus + USB-only connect. robot.local: needs hands on the arm.
