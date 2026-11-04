@@ -325,6 +325,19 @@ export function PluginRoot({ context }: Props) {
     }
   }
 
+  /** Why a row's rollback/recover is unavailable, or '' when it can run. */
+  const rowActionBlocked = (id: number) => {
+    if (busy) {
+      return copies.busyHint
+    }
+
+    if (adapter && !adapter.canChangeBaud) {
+      return copies.noBaudSwitch
+    }
+
+    return backup?.get(id) ? '' : copies.needBackupHint
+  }
+
   const firmwareLabel = (r: Row) => (r.firmware ? `${r.firmware.flavour} ${r.firmware.version}${r.firmware.supported ? '' : ` (${copies.untested})`}` : r.table ? '—' : copies.noReply)
   const canFlash = !!backup && !!adapter?.canChangeBaud && !busy && confirmText === 'FLASH' && !!releases
   const pending = rows.filter((r) => r.table && !(r.firmware?.flavour === 'robonine' && r.firmware.version === '9.0'))
@@ -377,23 +390,28 @@ export function PluginRoot({ context }: Props) {
                     </Button>
                   )}
                   {r.firmware?.flavour === 'robonine' && (
+                    // Disabled buttons ignore the pointer, so the reason sits on a wrapper.
+                    <span title={rowActionBlocked(r.id)}>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={!!rowActionBlocked(r.id)}
+                        onClick={() => setIsolation({ servoId: r.id, kind: 'rollback', release: 'feetech-3.10', checked: 'no', running: false })}
+                      >
+                        {copies.rollback}
+                      </Button>
+                    </span>
+                  )}
+                  <span title={rowActionBlocked(r.id)}>
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={!backup?.get(r.id) || busy || !adapter?.canChangeBaud}
-                      onClick={() => setIsolation({ servoId: r.id, kind: 'rollback', release: 'feetech-3.10', checked: 'no', running: false })}
+                      disabled={!!rowActionBlocked(r.id)}
+                      onClick={() => setIsolation({ servoId: r.id, kind: 'recover', release: r.firmware?.flavour === 'robonine' ? 'robonine-9.0' : 'feetech-3.10', checked: 'no', running: false })}
                     >
-                      {copies.rollback}
+                      {copies.recover}
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={!backup?.get(r.id) || busy || !adapter?.canChangeBaud}
-                    onClick={() => setIsolation({ servoId: r.id, kind: 'recover', release: r.firmware?.flavour === 'robonine' ? 'robonine-9.0' : 'feetech-3.10', checked: 'no', running: false })}
-                  >
-                    {copies.recover}
-                  </Button>
+                  </span>
                 </div>
               </TableCell>
             </TableRow>

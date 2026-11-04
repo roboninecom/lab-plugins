@@ -51,6 +51,8 @@ export interface Copies {
   close: string
   baudSwitch: string
   releaseLabel: string
+  needBackupHint: string
+  busyHint: string
 }
 
 export const translations: Record<string, Copies> = {
@@ -112,6 +114,8 @@ export const translations: Record<string, Copies> = {
     close: 'Close',
     baudSwitch: 'baud switch {ms} ms',
     releaseLabel: 'Firmware to install',
+    needBackupHint: 'Download the settings backup and confirm it first (steps 1 and 2).',
+    busyHint: 'Wait for the current operation to finish.',
   },
   ru: {
     title: 'Прошивка сервоприводов',
@@ -171,5 +175,7 @@ export const translations: Record<string, Copies> = {
     close: 'Закрыть',
     baudSwitch: 'переключение скорости {ms} мс',
     releaseLabel: 'Устанавливаемая прошивка',
+    needBackupHint: 'Сначала скачайте резервную копию настроек и подтвердите её (шаги 1 и 2).',
+    busyHint: 'Дождитесь окончания текущей операции.',
   },
 }
