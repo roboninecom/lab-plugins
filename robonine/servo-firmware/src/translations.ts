@@ -70,6 +70,7 @@ export interface Copies {
   gravityOn: string
   gravityOff: string
   gravityDone: string
+  gravityStopped: string
 }
 
 export const translations: Record<string, Copies> = {
@@ -150,6 +151,7 @@ export const translations: Record<string, Copies> = {
     gravityOn: 'On',
     gravityOff: 'Off',
     gravityDone: 'Gravity compensation calibrated.',
+    gravityStopped: 'Calibration stopped: {error}',
   },
   ru: {
     title: 'Прошивка сервоприводов',
@@ -228,5 +230,6 @@ export const translations: Record<string, Copies> = {
     gravityOn: 'Вкл',
     gravityOff: 'Выкл',
     gravityDone: 'Компенсация гравитации откалибрована.',
+    gravityStopped: 'Калибровка остановлена: {error}',
   },
 }

@@ -540,6 +540,7 @@ export function PluginRoot({ context }: Props) {
               })}
             </span>
           )}
+          {gravity.lastError && !gravity.calibrating && <span className="text-xs text-red-500">{fill(copies.gravityStopped, { error: gravity.lastError })}</span>}
           <div className="flex flex-wrap items-center gap-2">
             {gravity.calibrating ? (
               <>
