@@ -60,6 +60,16 @@ export interface Copies {
   motionStandard: string
   motionV9: string
   motionFallback: string
+  gravityTitle: string
+  gravityHint: string
+  gravityNeedsV9: string
+  gravityCalibrate: string
+  gravityRecalibrate: string
+  gravityProgress: string
+  gravityFitted: string
+  gravityOn: string
+  gravityOff: string
+  gravityDone: string
 }
 
 export const translations: Record<string, Copies> = {
@@ -130,6 +140,16 @@ export const translations: Record<string, Copies> = {
     motionStandard: 'Standard',
     motionV9: 'Robonine v9 (experimental)',
     motionFallback: 'Servos {ids} could not start v9 and run on the standard protocol.',
+    gravityTitle: '5. Gravity compensation',
+    gravityHint: 'The servos help hold the arm up against its own weight, so it sags less and lands closer to its targets. Calibration moves the arm through 14 raised poses (about two minutes) and saves the result to this robot. Keep the space around the arm clear.',
+    gravityNeedsV9: 'Switch the arm to Robonine v9 motion first.',
+    gravityCalibrate: 'Calibrate',
+    gravityRecalibrate: 'Calibrate again',
+    gravityProgress: 'Calibrating: pose {done} of {total}…',
+    gravityFitted: 'Calibrated {date}. Fit error (effort units): {rms}.',
+    gravityOn: 'On',
+    gravityOff: 'Off',
+    gravityDone: 'Gravity compensation calibrated.',
   },
   ru: {
     title: 'Прошивка сервоприводов',
@@ -198,5 +218,15 @@ export const translations: Record<string, Copies> = {
     motionStandard: 'Стандартный',
     motionV9: 'Robonine v9 (экспериментально)',
     motionFallback: 'Сервоприводы {ids} не смогли запустить v9 и работают по стандартному протоколу.',
+    gravityTitle: '5. Компенсация гравитации',
+    gravityHint: 'Сервоприводы помогают удерживать руку против её собственного веса: она меньше провисает и точнее приходит в цель. Калибровка проводит руку через 14 поднятых поз (около двух минут) и сохраняет результат для этого робота. Освободите место вокруг руки.',
+    gravityNeedsV9: 'Сначала переключите руку на движение Robonine v9.',
+    gravityCalibrate: 'Откалибровать',
+    gravityRecalibrate: 'Откалибровать заново',
+    gravityProgress: 'Калибровка: поза {done} из {total}…',
+    gravityFitted: 'Откалибровано {date}. Ошибка модели (единицы усилия): {rms}.',
+    gravityOn: 'Вкл',
+    gravityOff: 'Выкл',
+    gravityDone: 'Компенсация гравитации откалибрована.',
   },
 }

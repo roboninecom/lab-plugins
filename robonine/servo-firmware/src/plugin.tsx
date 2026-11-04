@@ -336,6 +336,34 @@ export function PluginRoot({ context }: Props) {
 
   const firmwareLabel = (r: Row) => (r.firmware ? `${r.firmware.flavour} ${r.firmware.version}${r.firmware.supported ? '' : ` (${copies.untested})`}` : r.table ? '—' : copies.noReply)
   const motion = context.connection.motion
+  const gravity = motion?.gravity ?? null
+  const gravityAbort = useRef<AbortController | null>(null)
+
+  const calibrateGravity = async () => {
+    if (!(await context.showSafetyWarning())) {
+      return
+    }
+
+    const abort = new AbortController()
+
+    gravityAbort.current = abort
+    try {
+      await context.calibrateGravity(abort.signal)
+      context.toast.success(copies.gravityDone)
+    } catch (e) {
+      context.toast.error((e as Error).message)
+    } finally {
+      gravityAbort.current = null
+    }
+  }
+
+  const switchGravity = async (enabled: boolean) => {
+    try {
+      await context.setGravityEnabled(enabled)
+    } catch (e) {
+      context.toast.error((e as Error).message)
+    }
+  }
   const switchMotion = async (protocol: 'sts' | 'sts-v9') => {
     try {
       await context.setMotionProtocol(protocol)
@@ -495,6 +523,47 @@ export function PluginRoot({ context }: Props) {
             </div>
           )}
           {motion.fallback.length > 0 && <span className="text-xs text-amber-600">{fill(copies.motionFallback, { ids: motion.fallback.join(', ') })}</span>}
+        </Card>
+      )}
+
+      {gravity && typeof context.calibrateGravity === 'function' && (
+        <Card className="p-4 flex flex-col gap-2">
+          <span className="text-sm font-medium">{copies.gravityTitle}</span>
+          <span className="text-xs text-muted-foreground">{motion?.active ? copies.gravityHint : copies.gravityNeedsV9}</span>
+          {gravity.fitted && (
+            <span className="text-xs">
+              {fill(copies.gravityFitted, {
+                date: new Date(gravity.fittedAt ?? '').toLocaleString(context.locale),
+                rms: Object.entries(gravity.rms)
+                  .map(([id, v]) => `${copies.colId} ${id}: ${v}`)
+                  .join(', '),
+              })}
+            </span>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {gravity.calibrating ? (
+              <>
+                <span className="text-xs">{fill(copies.gravityProgress, { done: gravity.progress?.done ?? 0, total: gravity.progress?.total ?? '…' })}</span>
+                <Button size="sm" variant="outline" onClick={() => gravityAbort.current?.abort()}>
+                  {copies.cancel}
+                </Button>
+              </>
+            ) : (
+              <Button size="sm" variant="outline" disabled={!motion?.active || busy} onClick={calibrateGravity}>
+                {gravity.fitted ? copies.gravityRecalibrate : copies.gravityCalibrate}
+              </Button>
+            )}
+            {gravity.fitted && (
+              <>
+                <Button size="sm" variant={gravity.enabled ? 'outline' : 'default'} disabled={gravity.calibrating} onClick={() => switchGravity(false)}>
+                  {copies.gravityOff}
+                </Button>
+                <Button size="sm" variant={gravity.enabled ? 'default' : 'outline'} disabled={gravity.calibrating} onClick={() => switchGravity(true)}>
+                  {copies.gravityOn}
+                </Button>
+              </>
+            )}
+          </div>
         </Card>
       )}
 
