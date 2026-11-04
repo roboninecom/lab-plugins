@@ -59,9 +59,9 @@ export const translations: Record<string, Copies> = {
     experimental: 'Experimental',
     warning:
       'Robonine v9 is experimental research firmware. Flashing can leave a servo unusable and recovery is not guaranteed. Support the arm so it cannot fall, use a stable power supply, and do not unplug anything during a transfer.',
-    notConnected: 'Connect the arm over USB to see its servos.',
+    notConnected: 'Only USB is supported for managing firmware: the upload switches the servo bus to another speed mid-transfer, which Bluetooth, virtual and remote connections cannot do.',
     connect: 'Connect over USB',
-    notUsb: 'Firmware can only be installed over a USB serial connection.',
+    notUsb: 'Only USB is supported for managing firmware: the upload switches the servo bus to another speed mid-transfer, which Bluetooth, virtual and remote connections cannot do.',
     reconnectUsb: 'Disconnect the robot and connect it again over USB.',
     noBaudSwitch:
       'This adapter (ESP32-C3 USB port) cannot change the servo baud rate, which installing firmware needs. Use a USB-to-serial servo adapter (CH343).',
@@ -118,9 +118,9 @@ export const translations: Record<string, Copies> = {
     experimental: 'Экспериментально',
     warning:
       'Robonine v9 — экспериментальная исследовательская прошивка. Прошивка может вывести сервопривод из строя, восстановление не гарантировано. Закрепите руку, чтобы она не упала, используйте стабильное питание и ничего не отключайте во время передачи.',
-    notConnected: 'Подключите руку по USB, чтобы увидеть сервоприводы.',
+    notConnected: 'Управлять прошивкой можно только по USB: во время загрузки шина сервоприводов переключается на другую скорость, а Bluetooth, виртуальное и удалённое подключение этого не умеют.',
     connect: 'Подключить по USB',
-    notUsb: 'Прошивку можно установить только через USB-последовательное подключение.',
+    notUsb: 'Управлять прошивкой можно только по USB: во время загрузки шина сервоприводов переключается на другую скорость, а Bluetooth, виртуальное и удалённое подключение этого не умеют.',
     reconnectUsb: 'Отключите робота и подключите его снова по USB.',
     noBaudSwitch:
       'Этот адаптер (USB-порт ESP32-C3) не может менять скорость шины сервоприводов, а для прошивки это нужно. Используйте USB-адаптер для сервоприводов (CH343).',

@@ -289,7 +289,7 @@ export function PluginRoot({ context }: Props) {
   if (!connected) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-8 text-center">
-        <p className="text-sm">{copies.notConnected}</p>
+        <p className="text-sm max-w-md">{copies.notConnected}</p>
         <Button size="sm" onClick={context.openConnectDialog}>
           {copies.connect}
         </Button>
@@ -300,7 +300,7 @@ export function PluginRoot({ context }: Props) {
   if (transport !== 'usb') {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-2 p-8 text-center">
-        <p className="text-sm font-medium">{copies.notUsb}</p>
+        <p className="text-sm font-medium max-w-md">{copies.notUsb}</p>
         <p className="text-xs text-muted-foreground">{copies.reconnectUsb}</p>
       </div>
     )
