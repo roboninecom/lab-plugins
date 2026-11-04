@@ -1,6 +1,6 @@
 # Servo firmware
 
-Installs the experimental Robonine v9 firmware on GD32-based STS3215 servos (model bytes 9.3), or rolls back to Feetech factory firmware 3.10. USB serial only (the `robot.firmware` scope limits the connect dialog to USB).
+Installs the experimental Robonine v9 firmware on GD32-based STS3215 servos (model bytes 9.x: the manifests list 9.3, and the firmware author has tested the other 9.x models), or rolls back to Feetech factory firmware 3.10. USB serial only (the `robot.firmware` scope limits the connect dialog to USB).
 
 ## How it works
 

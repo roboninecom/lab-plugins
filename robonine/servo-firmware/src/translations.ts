@@ -53,6 +53,7 @@ export interface Copies {
   releaseLabel: string
   needBackupHint: string
   busyHint: string
+  modelUnsupported: string
 }
 
 export const translations: Record<string, Copies> = {
@@ -116,6 +117,7 @@ export const translations: Record<string, Copies> = {
     releaseLabel: 'Firmware to install',
     needBackupHint: 'Download the settings backup and confirm it first (steps 1 and 2).',
     busyHint: 'Wait for the current operation to finish.',
+    modelUnsupported: 'Model {model} is not supported by this firmware: skipped.',
   },
   ru: {
     title: 'Прошивка сервоприводов',
@@ -177,5 +179,6 @@ export const translations: Record<string, Copies> = {
     releaseLabel: 'Устанавливаемая прошивка',
     needBackupHint: 'Сначала скачайте резервную копию настроек и подтвердите её (шаги 1 и 2).',
     busyHint: 'Дождитесь окончания текущей операции.',
+    modelUnsupported: 'Модель {model} не поддерживается этой прошивкой: пропущен.',
   },
 }

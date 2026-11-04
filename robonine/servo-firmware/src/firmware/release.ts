@@ -119,6 +119,16 @@ export async function loadRelease(manifest: ReleaseManifest, image: Uint8Array):
   return { manifest, image, flavour: application === 'factory' ? 'feetech' : 'robonine', version: `${version.major}.${version.minor}` }
 }
 
+/**
+ * Whether a release may be installed on a servo reporting model bytes `major.minor`
+ * (registers 3–4). The publisher's manifests list only 9.3, but the firmware's author has
+ * tested it on every 9.x GD32 STS servo (e.g. 9.11 on SO-ARM arms), so any model whose
+ * major byte appears in the manifest is accepted. A different family is still refused.
+ */
+export function acceptsModel(release: FirmwareRelease, major: number, minor: number): boolean {
+  return release.manifest.model_bytes.some(([a, b]) => a === major && (b === minor || a === 9))
+}
+
 /** Decode a base64 string (bundled images) without Node's Buffer. */
 export function fromBase64(text: string): Uint8Array {
   const raw = atob(text)

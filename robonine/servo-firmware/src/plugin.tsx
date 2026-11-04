@@ -6,7 +6,7 @@ import { recoverServo, respondingIds, rollbackServo } from './firmware/jobs'
 import { FlashError, flashServo, type FlashReport } from './firmware/flasher'
 import { loadBundledReleases, type ReleaseKey } from './releases'
 import { translations, type Copies } from './translations'
-import { mergeRows, type Row, type RowState } from './rows'
+import { mergeRows, modelSupported, type Row, type RowState } from './rows'
 import { detectEcho, Link } from './firmware/link'
 
 interface Props {
@@ -184,7 +184,7 @@ export function PluginRoot({ context }: Props) {
     try {
       await context.servo.disableTorque()
       for (const row of rows) {
-        if (!row.table || (row.firmware?.flavour === 'robonine' && row.firmware.version === release.version)) {
+        if (!row.table || !modelSupported(row.table, release) || (row.firmware?.flavour === 'robonine' && row.firmware.version === release.version)) {
           continue
         }
 
@@ -310,14 +310,21 @@ export function PluginRoot({ context }: Props) {
       case 'error':
         return `${copies.failed}: ${r.message}`
       default:
-        return r.message
+        return r.message || (modelSupported(r.table, releases?.get('robonine-9.0')) ? '' : fill(copies.modelUnsupported, { model: `${r.table![3]}.${r.table![4]}` }))
     }
   }
 
   /** Why a row's rollback/recover is unavailable, or '' when it can run. */
   const rowActionBlocked = (id: number) => {
+    const table = rows.find((r) => r.id === id)?.table ?? null
+
     if (busy) {
       return copies.busyHint
+    }
+
+    // Rollback and recovery images accept the same hardware as the install image.
+    if (!modelSupported(table, releases?.get('feetech-3.10'))) {
+      return fill(copies.modelUnsupported, { model: `${table![3]}.${table![4]}` })
     }
 
     if (adapter && !adapter.canChangeBaud) {
@@ -329,7 +336,7 @@ export function PluginRoot({ context }: Props) {
 
   const firmwareLabel = (r: Row) => (r.firmware ? `${r.firmware.flavour} ${r.firmware.version}${r.firmware.supported ? '' : ` (${copies.untested})`}` : r.table ? '—' : copies.noReply)
   const canFlash = !!backup && !!adapter?.canChangeBaud && !busy && confirmText === 'FLASH' && !!releases
-  const pending = rows.filter((r) => r.table && !(r.firmware?.flavour === 'robonine' && r.firmware.version === '9.0'))
+  const pending = rows.filter((r) => r.table && modelSupported(r.table, releases?.get('robonine-9.0')) && !(r.firmware?.flavour === 'robonine' && r.firmware.version === '9.0'))
 
   return (
     <div className="flex flex-col gap-4 p-4 h-full overflow-auto">

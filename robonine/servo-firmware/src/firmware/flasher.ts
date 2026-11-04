@@ -3,7 +3,7 @@
 
 import { APP_BAUD, upload, type Progress } from './bootloader'
 import { Link, packet, sleep } from './link'
-import type { FirmwareRelease } from './release'
+import { acceptsModel, type FirmwareRelease } from './release'
 
 export const BAUD_RATES = [1_000_000, 500_000, 250_000, 128_000, 115_200, 76_800, 57_600, 38_400] as const
 
@@ -25,7 +25,7 @@ export function deviceProblem(table: Uint8Array, release: FirmwareRelease, servo
     return 'Register snapshot has the wrong length or ID'
   }
 
-  if (!release.manifest.model_bytes.some(([a, b]) => a === table[3] && b === table[4])) {
+  if (!acceptsModel(release, table[3]!, table[4]!)) {
     return `Unsupported model bytes [${table[3]}, ${table[4]}]`
   }
 

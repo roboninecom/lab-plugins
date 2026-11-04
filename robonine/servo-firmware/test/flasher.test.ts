@@ -112,6 +112,18 @@ for (const echo of [false, true]) {
   })
 }
 
+describe('other 9.x models', () => {
+  it('flashes a 9.11 servo with a release whose manifest lists 9.3', async () => {
+    const bus = new SimBus({ ids: [1], images: IMAGES })
+
+    bus.servos.get(1)!.table[4] = 11
+
+    const report = await flashServo(new Link(bus, false), 'flash', { servoId: 1, release: await testRelease('robonine', 5) })
+
+    assert.equal(report.status, 'verified')
+  })
+})
+
 describe('full-size bundled image', () => {
   it('transfers all 403 blocks of the v9 release through an echoing adapter', async () => {
     const bus = new SimBus({ echo: true, images: new Map([[403, 'robonine']]) })
@@ -131,7 +143,7 @@ describe('preflight refuses before any reset', () => {
     ['torque on', (t) => (t[40] = 1), /torque off/],
     ['settings unlocked', (t) => (t[55] = 0), /persistence locked/],
     ['active alarm', (t) => (t[65] = 4), /no alarm/],
-    ['other model', (t) => (t[4] = 8), /Unsupported model bytes \[9, 8\]/],
+    ['other model family', (t) => (t[3] = 8), /Unsupported model bytes \[8, 3\]/],
   ]
 
   for (const [name, mutate, message] of cases) {
