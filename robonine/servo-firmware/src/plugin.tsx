@@ -6,24 +6,13 @@ import { recoverServo, respondingIds, rollbackServo } from './firmware/jobs'
 import { FlashError, flashServo, type FlashReport } from './firmware/flasher'
 import { loadBundledReleases, type ReleaseKey } from './releases'
 import { translations, type Copies } from './translations'
+import { mergeRows, type Row, type RowState } from './rows'
 import { detectEcho, Link } from './firmware/link'
 
 interface Props {
   context: PluginContext
 }
 
-type RowState = 'idle' | 'preflight' | 'transfer' | 'verify' | 'restore' | 'done' | 'error'
-
-interface Row {
-  id: number
-  table: Uint8Array | null
-  firmware: ServoFirmware | null
-  state: RowState
-  done: number
-  total: number
-  message: string
-  report: FlashReport | null
-}
 
 interface Isolation {
   servoId: number
@@ -97,7 +86,7 @@ export function PluginRoot({ context }: Props) {
       for (const id of servoIds) {
         found.push(await readRow(id))
       }
-      setRows(found)
+      setRows((previous) => mergeRows(previous, found))
       setAdapter(await context.bus.exclusive(async (bus) => ({ echo: await detectEcho(bus), canChangeBaud: bus.canChangeBaud })))
     } catch (e) {
       context.toast.error((e as Error).message)
@@ -121,7 +110,7 @@ export function PluginRoot({ context }: Props) {
     for (const id of servoIds) {
       fresh.push(await readRow(id))
     }
-    setRows(fresh)
+    setRows((previous) => mergeRows(previous, fresh))
 
     const tables = fresh.filter((r) => r.table)
     const date = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')
@@ -461,7 +450,7 @@ export function PluginRoot({ context }: Props) {
           <span className="text-xs text-muted-foreground">{copies.step3Hint}</span>
           <div className="flex flex-wrap items-center gap-2">
             <Input
-              className="h-8 w-48 font-mono"
+              className="h-8 w-64 font-mono"
               placeholder={copies.typeFlash}
               value={confirmText}
               disabled={!backup || busy}
