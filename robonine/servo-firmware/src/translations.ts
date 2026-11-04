@@ -142,7 +142,7 @@ export const translations: Record<string, Copies> = {
     motionV9: 'Robonine v9 (experimental)',
     motionFallback: 'Servos {ids} could not start v9 and run on the standard protocol.',
     gravityTitle: '5. Gravity compensation',
-    gravityHint: 'The servos help hold the arm up against its own weight, so it sags less and lands closer to its targets. Calibration moves the arm one joint at a time through 24 working poses (about three minutes), keeping the gripper's jaws clear of the table, and saves the result to this robot. Keep the space around the arm clear.',
+    gravityHint: 'The servos help hold the arm up against its own weight, so it sags less and lands closer to its targets. Calibration moves the arm one joint at a time through 24 working poses (about three minutes), keeping the gripper jaws clear of the table, and saves the result to this robot. Keep the space around the arm clear.',
     gravityNeedsV9: 'Switch the arm to Robonine v9 motion first.',
     gravityCalibrate: 'Calibrate',
     gravityRecalibrate: 'Calibrate again',
